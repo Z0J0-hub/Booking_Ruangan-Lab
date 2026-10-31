@@ -106,14 +106,28 @@ npm run dev
 ### Docker Deployment
 
 ```bash
-# Build and run all services
-docker-compose up -d --build
+# Local preview: http://localhost:8080
+docker compose up -d --build
 
-# Access:
-# Frontend: http://localhost:8080
-# Backend API: http://localhost:3000
-# Database: localhost:5432
+# Staging: http://localhost:8081
+docker compose -f docker-compose.staging.yml up -d --build
+
+# Production: http://localhost (HTTP port 80)
+docker compose -f docker-compose.prod.yml up -d --build
 ```
+
+The current app uses Supabase directly for authentication and data. Docker runs
+only the React frontend, built with Node.js 22 and served by Nginx. Each Compose
+file runs independently; they are not override files to combine with `-f`.
+
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env` before building.
+These public values are embedded during the Vite build, so rebuild the image
+after changing them. Never use a Supabase service-role key in frontend settings.
+The `.env` file itself is excluded from the Docker build context.
+
+Production HTTPS requires a reverse proxy with a valid certificate. The legacy
+Jenkins pipeline and backend deployment instructions below still describe the
+previous architecture and need separate updates before using them for deployment.
 
 ### Database Setup
 

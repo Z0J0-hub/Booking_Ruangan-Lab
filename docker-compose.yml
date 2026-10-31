@@ -1,63 +1,12 @@
-version: '3.8'
-
-# Local development docker-compose configuration
-# For running the full stack locally with Docker
-
+# Local preview of the built app. Auth and database are hosted by Supabase.
 services:
-  db:
-    image: postgres:14-alpine
-    container_name: lab-booking-dev-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: lab_booking_dev
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - dev-db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: lab-booking-dev-backend
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      NODE_ENV: development
-      PORT: 3000
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: lab_booking_dev
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      JWT_SECRET: dev-secret-change-in-production
-      JWT_EXPIRES_IN: 3600
-      CORS_ORIGIN: http://localhost:5173
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./backend/src:/app/src
-      - ./backend/package.json:/app/package.json
-
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: lab-booking-dev-frontend
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?Set VITE_SUPABASE_URL in .env}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?Set VITE_SUPABASE_ANON_KEY in .env}
     restart: unless-stopped
-    depends_on:
-      - backend
     ports:
       - "8080:80"
-
-volumes:
-  dev-db-data:

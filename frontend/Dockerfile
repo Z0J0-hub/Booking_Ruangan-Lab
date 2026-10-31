@@ -1,7 +1,7 @@
 # Frontend Dockerfile
 # Multi-stage build for React + Vite frontend
 
-FROM node:18-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -14,6 +14,11 @@ RUN npm ci
 # Copy source code
 COPY . .
 
+# Vite embeds these public Supabase settings at build time.
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+RUN test -n "$VITE_SUPABASE_URL" && test -n "$VITE_SUPABASE_ANON_KEY"
+
 # Build the application
 RUN npm run build
 
@@ -24,7 +29,7 @@ FROM nginx:alpine AS production
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy custom nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port
 EXPOSE 80
