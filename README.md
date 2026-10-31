@@ -1,3 +1,6 @@
+# dso_reservasi_perpus
+Projek Tugas Besar DevSecOp membuat aplikasi sistem reservasi ruangan perpustakaan dengan pendekatan pengembangan menggunakan konsep Security mindset dan Development Operational yang menggunakan konsep Continuous Integration and Continuous Deployment
+
 # Lab Booking System - Universitas Telkom
 
 A production-ready web application for managing lab equipment bookings at Universitas Telkom's Fakultas Teknik Elektro. Built to replace manual spreadsheet-based scheduling with automated conflict detection, real-time equipment status tracking, and comprehensive audit logging.
