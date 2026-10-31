@@ -1,0 +1,77 @@
+version: '3.8'
+
+# Staging environment docker-compose configuration
+# Used by Jenkins pipeline for staging deployments
+
+services:
+  db:
+    image: postgres:14-alpine
+    container_name: lab-booking-staging-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lab_booking_staging
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - staging-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - staging-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lab-booking-staging-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: staging
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: lab_booking_staging
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 900
+      CORS_ORIGIN: http://localhost:3001
+      RATE_LIMIT_MAX: 100
+      RATE_LIMIT_WINDOW: 60000
+    ports:
+      - "3001:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - staging-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: lab-booking-staging-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8081:80"
+    networks:
+      - staging-network
+
+volumes:
+  staging-db-data:
+
+networks:
+  staging-network:
+    driver: bridge
