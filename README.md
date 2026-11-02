@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Library Room Booking System - Universitas Telkom
 
 A web application for managing study-room bookings at Universitas Telkom's library. It replaces manual scheduling with room availability checks, booking management, and QR check-in.
@@ -234,3 +235,6 @@ The backend tests cover schedule validation and the 15-minute check-in deadline.
 ## License
 
 This project is developed for Universitas Telkom - Fakultas Teknik Elektro as part of a DevOps course assignment.
+=======
+# Booking_Ruangan-Lab
+>>>>>>> b81852021c0d7c9893cb96ea3c948debb9716dd8
