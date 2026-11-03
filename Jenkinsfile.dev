@@ -1,0 +1,91 @@
+pipeline {
+    agent any
+    options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 15, unit: 'MINUTES')
+        skipDefaultCheckout(true)
+    }
+    triggers { pollSCM('H/5 * * * *') }
+    stages {
+        stage('Checkout') {
+            steps { checkout scm }
+        }
+        stage('Tools') {
+            steps {
+                script {
+                    if (isUnix()) {
+                        sh 'git --version && node --version && npm --version'
+                        sh "node -e \"if (process.versions.node.split('.')[0] !== '24') process.exit(1)\""
+                    } else {
+                        bat 'git --version && node --version && call npm.cmd --version'
+                        bat "node -e \"if (process.versions.node.split('.')[0] !== '24') process.exit(1)\""
+                    }
+                }
+            }
+        }
+        stage('Install') {
+            steps {
+                script {
+                    if (isUnix()) {
+                        sh 'npm ci --no-audit --no-fund'
+                        sh 'npm --prefix backend ci --no-audit --no-fund'
+                    } else {
+                        bat 'npm.cmd ci --no-audit --no-fund'
+                        bat 'npm.cmd --prefix backend ci --no-audit --no-fund'
+                    }
+                }
+            }
+        }
+        stage('Types and lint') {
+            steps {
+                script {
+                    if (isUnix()) { sh 'npm run typecheck && npm run lint' }
+                    else { bat 'call npm.cmd run typecheck && call npm.cmd run lint' }
+                }
+            }
+        }
+        stage('Backend tests') {
+            steps {
+                script {
+                    if (isUnix()) { sh 'npm --prefix backend test' }
+                    else { bat 'npm.cmd --prefix backend test' }
+                }
+            }
+        }
+        stage('Build') {
+            steps {
+                script {
+                    if (isUnix()) { sh 'npm run build && npm --prefix backend run build' }
+                    else { bat 'call npm.cmd run build && call npm.cmd --prefix backend run build' }
+                }
+            }
+        }
+        stage('Dependency audit') {
+            steps {
+                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                    script {
+                        // Keep both audit logs visible while establishing the baseline.
+                        def frontendStatus
+                        def backendStatus
+                        if (isUnix()) {
+                            frontendStatus = sh(returnStatus: true, script: 'npm audit --audit-level=high')
+                            backendStatus = sh(returnStatus: true, script: 'npm --prefix backend audit --audit-level=high')
+                        } else {
+                            frontendStatus = bat(returnStatus: true, script: 'npm.cmd audit --audit-level=high')
+                            backendStatus = bat(returnStatus: true, script: 'npm.cmd --prefix backend audit --audit-level=high')
+                        }
+                        if (frontendStatus != 0 || backendStatus != 0) {
+                            error('Dependency audit needs attention. Review both logs for findings or registry errors.')
+                        }
+                    }
+                }
+            }
+        }
+        stage('Archive development build') {
+            steps {
+                archiveArtifacts artifacts: 'dist/**,backend/*.mjs,backend/schema.sql,backend/package.json,backend/package-lock.json', fingerprint: true
+            }
+        }
+    }
+}

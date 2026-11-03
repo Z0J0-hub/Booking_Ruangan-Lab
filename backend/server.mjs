@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,10 @@ import jwt from 'jsonwebtoken';
 import mysql from 'mysql2/promise';
 import nodemailer from 'nodemailer';
 import { hasMissedCheckIn, isCheckInTooEarly, isValidSchedule } from './booking-policy.mjs';
+
+// Use the same environment file for root scripts and commands run in backend/.
+// Container environment variables retain precedence over the local file.
+dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
 
 const port = Number(process.env.PORT || 3000);
 const jwtSecret = process.env.JWT_SECRET;
