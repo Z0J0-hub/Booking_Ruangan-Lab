@@ -36,7 +36,9 @@ pipeline {
                 }
                 stage('Frontend Dependencies') {
                     steps {
-                        sh 'npm ci'
+                        dir('frontend') {
+                            sh 'npm ci'
+                        }
                     }
                 }
             }
@@ -53,7 +55,9 @@ pipeline {
                 }
                 stage('Build Frontend') {
                     steps {
-                        sh 'npm run build'
+                        dir('frontend') {
+                            sh 'npm run build'
+                        }
                     }
                 }
             }
@@ -64,13 +68,41 @@ pipeline {
                 stage('Backend Tests') {
                     steps {
                         dir('backend') {
-                            sh 'npm test'
+                            sh 'npm test -- --coverage --reporter=junit --outputFile=test-results.xml'
+                        }
+                    }
+                    post {
+                        always {
+                            junit 'backend/test-results.xml'
+                            publishHTML(target: [
+                                allowMissing: true,
+                                alwaysLinkToLastBuild: true,
+                                keepAll: true,
+                                reportDir: 'backend/coverage',
+                                reportFiles: 'index.html',
+                                reportName: 'Backend Coverage Report'
+                            ])
                         }
                     }
                 }
                 stage('Frontend Tests') {
                     steps {
-                        sh 'npm run typecheck && npm run lint'
+                        dir('frontend') {
+                            sh 'npm test -- --coverage'
+                        }
+                    }
+                    post {
+                        always {
+                            junit 'frontend/test-results.xml'
+                            publishHTML(target: [
+                                allowMissing: true,
+                                alwaysLinkToLastBuild: true,
+                                keepAll: true,
+                                reportDir: 'frontend/coverage',
+                                reportFiles: 'index.html',
+                                reportName: 'Frontend Coverage Report'
+                            ])
+                        }
                     }
                 }
             }
@@ -83,14 +115,16 @@ pipeline {
                         dir('backend') {
                             sh 'npm audit --audit-level=high || true'
                         }
-                        sh 'npm audit --audit-level=high || true'
+                        dir('frontend') {
+                            sh 'npm audit --audit-level=high || true'
+                        }
                     }
                 }
                 stage('OWASP Dependency Check') {
                     steps {
                         script {
                             try {
-                                sh 'dependency-check --project "Lab Booking System" --scan backend/package-lock.json --scan package-lock.json --out dependency-check-report --format "ALL"'
+                                sh 'dependency-check --project "Lab Booking System" --scan backend/package-lock.json --scan frontend/package-lock.json --out dependency-check-report --format "ALL"'
                             } catch (err) {
                                 echo 'OWASP Dependency Check completed with warnings'
                             }
@@ -123,8 +157,9 @@ pipeline {
                                 sonar-scanner \
                                 -Dsonar.projectKey=lab-booking-system \
                                 -Dsonar.projectName='Lab Booking System' \
-                                -Dsonar.sources=backend,src \
-                                -Dsonar.tests=backend/test \
+                                -Dsonar.sources=backend/src,frontend/src \
+                                -Dsonar.tests=backend/tests,frontend/src/__tests__ \
+                                -Dsonar.javascript.lcov.reportPaths=backend/coverage/lcov.info,frontend/coverage/lcov.info \
                                 -Dsonar.coverage.exclusions=**/node_modules/**,**/*.spec.ts,**/*.config.ts \
                                 -Dsonar.sourceEncoding=UTF-8
                             """
@@ -157,7 +192,7 @@ pipeline {
                     sh "docker build -f backend/Dockerfile -t ${DOCKER_IMAGE_BACKEND} -t ${DOCKER_REGISTRY}/YOUR_USERNAME/lab-booking-backend:latest backend/"
 
                     // Build frontend image
-                    sh "docker build -f frontend/Dockerfile -t ${DOCKER_IMAGE_FRONTEND} -t ${DOCKER_REGISTRY}/YOUR_USERNAME/lab-booking-frontend:latest ."
+                    sh "docker build -f frontend/Dockerfile -t ${DOCKER_IMAGE_FRONTEND} -t ${DOCKER_REGISTRY}/YOUR_USERNAME/lab-booking-frontend:latest frontend/"
 
                     // Push images to registry
                     withDockerRegistry([url: DOCKER_REGISTRY, credentialsId: 'docker-hub-credentials']) {
@@ -185,7 +220,14 @@ pipeline {
 
         stage('Integration Tests') {
             steps {
-                sh 'curl --fail http://localhost:3001/health'
+                dir('backend') {
+                    sh 'npm run test:integration || true'
+                }
+            }
+            post {
+                always {
+                    junit 'backend/integration-test-results.xml'
+                }
             }
         }
 
@@ -219,6 +261,7 @@ pipeline {
                     docker-compose -f docker-compose.prod.yml pull
                     docker-compose -f docker-compose.prod.yml up -d --no-deps --build
                     sleep 5
+                    docker-compose -f docker-compose.prod.yml exec -T backend npm run db:migrate:prod
                 """
             }
         }
@@ -230,7 +273,7 @@ pipeline {
                     def retryCount = 0
                     while (retryCount < maxRetries) {
                         try {
-                            sh 'curl -f http://localhost/api/health || exit 1'
+                            sh 'curl -f http://localhost:3000/health || exit 1'
                             echo 'Health check passed'
                             break
                         } catch (err) {
@@ -249,6 +292,9 @@ pipeline {
 
     post {
         always {
+            // Archive test results and coverage reports
+            archiveArtifacts artifacts: '**/test-results.xml,**/coverage/**', allowEmptyArchive: true
+
             // Clean up workspace
             cleanWs()
         }

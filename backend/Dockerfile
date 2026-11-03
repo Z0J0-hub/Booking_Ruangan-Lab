@@ -1,18 +1,51 @@
-FROM node:20-alpine
+# Backend Dockerfile
+# Multi-stage build for Node.js Express backend
+
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Copy package files
 COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
 
-COPY server.mjs schema.sql booking-policy.mjs ./
+# Install all dependencies (including dev for build)
+RUN npm ci
 
-RUN addgroup -S app && adduser -S app -G app
-USER app
+# Copy source code
+COPY . .
 
+# Build TypeScript
+RUN npm run build
+
+# Production stage
+FROM node:18-alpine AS production
+
+WORKDIR /app
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init curl
+
+# Copy package files
+COPY package*.json ./
+
+# Install production dependencies only
+RUN npm ci --only=production && npm cache clean --force
+
+# Copy built files from builder stage
+COPY --from=builder /app/dist ./dist
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+USER nodejs
+
+# Expose port
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -q --spider http://localhost:3000/health || exit 1
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
 
-CMD ["node", "server.mjs"]
+# Start the application
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "dist/index.js"]

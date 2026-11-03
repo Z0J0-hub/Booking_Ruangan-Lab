@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { LibraryBig, Lock, CheckCircle2, ArrowRight, Loader2 } from 'lucide-react';
-import { useAuthStore } from '@/features/auth/store/authStore';
+import { useAuthStore } from '@/store/authStore';
 
 export function ResetPasswordPage() {
   const { updatePassword, completePasswordRecovery, loading } = useAuthStore();
@@ -12,8 +12,8 @@ export function ResetPasswordPage() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
-    if (password.length < 8) {
-      setError('Kata sandi minimal 8 karakter.');
+    if (password.length < 6) {
+      setError('Kata sandi minimal 6 karakter.');
       return;
     }
     if (password !== confirmPassword) {
@@ -51,13 +51,13 @@ export function ResetPasswordPage() {
           <form onSubmit={handleSubmit} className="border-t-4 border-teal-800 bg-white p-7 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-teal-800">Pemulihan akun</p>
             <h1 className="mt-2 text-2xl font-semibold text-slate-900">Buat kata sandi baru</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Gunakan minimal 8 karakter dan konfirmasi kata sandi Anda.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Gunakan minimal 6 karakter dan konfirmasi kata sandi Anda.</p>
 
             <label className="mt-6 block text-sm font-medium text-slate-700">
               Kata sandi baru
               <span className="relative mt-1.5 block">
                 <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} className="w-full border border-slate-300 py-2.5 pl-10 pr-3 text-sm focus:border-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-700/15" />
+                <input type="password" autoComplete="new-password" minLength={6} required value={password} onChange={(event) => setPassword(event.target.value)} className="w-full border border-slate-300 py-2.5 pl-10 pr-3 text-sm focus:border-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-700/15" />
               </span>
             </label>
 
@@ -65,7 +65,7 @@ export function ResetPasswordPage() {
               Ulangi kata sandi baru
               <span className="relative mt-1.5 block">
                 <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input type="password" autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="w-full border border-slate-300 py-2.5 pl-10 pr-3 text-sm focus:border-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-700/15" />
+                <input type="password" autoComplete="new-password" minLength={6} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="w-full border border-slate-300 py-2.5 pl-10 pr-3 text-sm focus:border-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-700/15" />
               </span>
             </label>
 

@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { apiRequest } from '@/lib/api';
-import { useAuthStore } from '@/features/auth/store/authStore';
+import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 import type { Booking, BookingStatus } from '@/lib/types';
 import { BookingStatusBadge } from '@/components/StatusBadge';
 import { Modal } from '@/components/Modal';
 import { CalendarDays, Clock3, Inbox, Loader2, MapPin, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { QRCodeSVG } from 'qrcode.react';
 
 const filterOptions: { value: BookingStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'Semua' },
@@ -32,19 +31,20 @@ export function LibraryBookingsPage() {
   useEffect(() => {
     const fetchBookings = async () => {
       if (!userId) return;
-      try {
-        const data = await apiRequest<Booking[]>('/bookings');
-        setBookings(data);
-        setError('');
-      } catch (error) {
-        setError(error instanceof Error ? error.message : 'Gagal memuat daftar booking.');
-      }
+      setLoading(true);
+      let query = supabase
+        .from('bookings')
+        .select(isAdmin ? '*, room:rooms(*), profile:profiles(*)' : '*, room:rooms(*)')
+        .not('room_id', 'is', null)
+        .order('start_time', { ascending: true });
+      if (!isAdmin) query = query.eq('user_id', userId);
+      const { data, error: queryError } = await query;
+      setError(queryError?.message || '');
+      setBookings((data as unknown as Booking[] | null) || []);
+      setLoading(false);
     };
 
-    setLoading(true);
-    void fetchBookings().finally(() => setLoading(false));
-    const refreshTimer = window.setInterval(() => void fetchBookings(), 30_000);
-    return () => window.clearInterval(refreshTimer);
+    void fetchBookings();
   }, [isAdmin, userId]);
 
   const updateStatus = async (bookingId: string, status: BookingStatus, cancellationReason?: string) => {
@@ -52,20 +52,20 @@ export function LibraryBookingsPage() {
     setError('');
     const values: { status: BookingStatus; cancellation_reason?: string } = { status };
     if (cancellationReason) values.cancellation_reason = cancellationReason;
-    try {
-      await apiRequest(`/bookings/${bookingId}`, {
-        method: 'PATCH',
-        body: JSON.stringify(values),
-      });
-      const data = await apiRequest<Booking[]>('/bookings');
-      setBookings(data);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Gagal memperbarui booking.');
-      return false;
-    } finally {
-      setActionLoading(null);
+    const { error: updateError } = await supabase.from('bookings').update(values).eq('id', bookingId);
+    setActionLoading(null);
+    if (updateError) setError(updateError.message);
+    else {
+      let query = supabase
+        .from('bookings')
+        .select(isAdmin ? '*, room:rooms(*), profile:profiles(*)' : '*, room:rooms(*)')
+        .not('room_id', 'is', null)
+        .order('start_time', { ascending: true });
+      if (!isAdmin && userId) query = query.eq('user_id', userId);
+      const { data } = await query;
+      setBookings((data as unknown as Booking[] | null) || []);
     }
-    return true;
+    return !updateError;
   };
 
   const confirmCancellation = async () => {
@@ -131,27 +131,6 @@ export function LibraryBookingsPage() {
                   <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{booking.purpose}</p>
                   {isAdmin && booking.profile && <p className="mt-2 text-xs text-slate-500">Diajukan oleh {booking.profile.full_name}</p>}
                   {booking.cancellation_reason && <p className="mt-2 border-l-2 border-red-500 pl-3 text-sm text-red-800">Alasan pembatalan: {booking.cancellation_reason}</p>}
-                  {booking.auto_approval_reason && (
-                    <p className="mt-2 text-xs text-emerald-800">{booking.auto_approval_reason}</p>
-                  )}
-                  {booking.status === 'approved' && !booking.checked_in_at && booking.checkin_token && (
-                    <div className="mt-4 inline-flex items-center gap-3 border border-slate-200 bg-white p-3">
-                      <QRCodeSVG
-                        size={104}
-                        value={`${window.location.origin}/?checkin=${encodeURIComponent(booking.id)}&token=${encodeURIComponent(booking.checkin_token)}`}
-                        aria-label={`QR check-in ${booking.room?.name || 'booking'}`}
-                      />
-                      <div className="max-w-56 text-xs leading-5 text-slate-600">
-                        <p className="font-semibold text-slate-800">QR check-in</p>
-                        <p>Tunjukkan QR ini saat tiba. Check-in tersedia mulai 15 menit sebelum jadwal sampai 15 menit setelah waktu mulai.</p>
-                      </div>
-                    </div>
-                  )}
-                  {booking.checked_in_at && (
-                    <p className="mt-2 text-xs font-medium text-emerald-800">
-                      Sudah check-in pukul {format(parseISO(booking.checked_in_at), 'HH:mm')}.
-                    </p>
-                  )}
                 </div>
                 {isAdmin && (
                   <div className="flex items-start gap-2 md:justify-end">
