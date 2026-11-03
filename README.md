@@ -134,6 +134,14 @@ previous architecture and need separate updates before using them for deployment
 
 ### Database Setup
 
+For a **new Supabase project**, follow [supabase/README.md](supabase/README.md)
+and run only [initial_schema.sql](supabase/initial_schema.sql) in the SQL Editor.
+It creates the current library room-booking schema, signup profile trigger, and
+access policies. Do not run `library_booking_migration.sql` afterward: that file
+is only for upgrading an existing equipment-booking database.
+
+The schema description below documents the legacy equipment-booking architecture.
+
 The application uses Supabase (PostgreSQL). The database schema is created via migrations including:
 
 - `profiles` - User profiles with role assignments
