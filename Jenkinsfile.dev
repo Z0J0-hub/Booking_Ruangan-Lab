@@ -55,15 +55,15 @@ pipeline {
         stage('Dependency Audit') {
             steps {
                 bat '''
-                    call npm.cmd audit --audit-level=high
+                    @echo off
+                    call npm.cmd run ci:audit
                     if errorlevel 1 exit /b 1
                 '''
-        
-                dir('backend') {
-                    bat '''
-                        call npm.cmd audit --audit-level=high
-                        if errorlevel 1 exit /b 1
-                    '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/audit/*',
+                        fingerprint: true
                 }
             }
         }
