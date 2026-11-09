@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useAuthStore } from '@/store/authStore';
-import type { Booking, Room } from '@/lib/types';
-import { RoomBookingModal } from '@/components/RoomBookingModal';
+import { apiRequest } from '@/lib/api';
+import { useAuthStore } from '@/features/auth/store/authStore';
+import type { BookingSchedule, Room } from '@/lib/types';
+import { RoomBookingModal } from '@/features/rooms/components/RoomBookingModal';
 import { Modal } from '@/components/Modal';
 import { DoorOpen, MapPin, Plus, Users, Pencil, Loader2 } from 'lucide-react';
 
 export function RoomsPage() {
   const { user } = useAuthStore();
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookings, setBookings] = useState<BookingSchedule[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [showRoomEditor, setShowRoomEditor] = useState(false);
@@ -23,26 +23,34 @@ export function RoomsPage() {
 
   const fetchRooms = async () => {
     setLoading(true);
-    const [roomResult, bookingResult] = await Promise.all([
-      supabase.from('rooms').select('*').order('name'),
-      supabase.from('bookings').select('*').not('room_id', 'is', null).neq('status', 'cancelled').order('start_time'),
-    ]);
-    if (roomResult.error) setError(roomResult.error.message);
-    else setError('');
-    setRooms((roomResult.data as Room[] | null) || []);
-    setBookings((bookingResult.data as Booking[] | null) || []);
-    setLoading(false);
+    try {
+      const [roomResult, bookingResult] = await Promise.all([
+        apiRequest<Room[]>('/rooms'),
+        apiRequest<BookingSchedule[]>('/bookings?status=active'),
+      ]);
+      setRooms(roomResult);
+      setBookings(bookingResult);
+      setError('');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Gagal memuat data ruangan.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const saveRoom = async (roomData: Pick<Room, 'name' | 'location' | 'capacity' | 'description'>) => {
-    const result = editingRoom
-      ? await supabase.from('rooms').update(roomData).eq('id', editingRoom.id)
-      : await supabase.from('rooms').insert(roomData);
-    if (result.error) return result.error.message;
-    setShowRoomEditor(false);
-    setEditingRoom(null);
-    await fetchRooms();
-    return null;
+    try {
+      await apiRequest(editingRoom ? `/rooms/${editingRoom.id}` : '/rooms', {
+        method: editingRoom ? 'PUT' : 'POST',
+        body: JSON.stringify(roomData),
+      });
+      setShowRoomEditor(false);
+      setEditingRoom(null);
+      await fetchRooms();
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : 'Gagal menyimpan ruangan.';
+    }
   };
 
   return (

@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useAuthStore } from '@/store/authStore';
-import type { Booking, Room } from '@/lib/types';
+import { apiRequest } from '@/lib/api';
+import type { BookingSchedule, Room } from '@/lib/types';
 import { Modal } from '@/components/Modal';
 import { AlertTriangle, CalendarDays, CheckCircle2, Clock3, Loader2, Users } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -11,7 +10,7 @@ interface RoomBookingModalProps {
   onClose: () => void;
   room: Room;
   onBooked: () => void;
-  existingBookings: Booking[];
+  existingBookings: BookingSchedule[];
 }
 
 const OPEN_MINUTES = 8 * 60;
@@ -29,7 +28,6 @@ function minutesToTime(minutes: number) {
 }
 
 export function RoomBookingModal({ open, onClose, room, onBooked, existingBookings }: RoomBookingModalProps) {
-  const { user } = useAuthStore();
   const [date, setDate] = useState(getNextBookableDate);
   const [startTime, setStartTime] = useState('08:00');
   const [durationHours, setDurationHours] = useState(1);
@@ -92,19 +90,22 @@ export function RoomBookingModal({ open, onClose, room, onBooked, existingBookin
     }
 
     setSubmitting(true);
-    const { error: insertError } = await supabase.from('bookings').insert({
-      user_id: user?.id,
-      room_id: room.id,
-      start_time: new Date(`${date}T${startTime}:00`).toISOString(),
-      end_time: new Date(`${date}T${endTime}:00`).toISOString(),
-      purpose: purpose.trim(),
-      status: 'pending',
-    });
-    setSubmitting(false);
-
-    if (insertError) {
-      setError(insertError.message);
+    try {
+      await apiRequest('/bookings', {
+        method: 'POST',
+        body: JSON.stringify({
+          room_id: room.id,
+          start_time: new Date(`${date}T${startTime}:00`).toISOString(),
+          end_time: new Date(`${date}T${endTime}:00`).toISOString(),
+          purpose: purpose.trim(),
+          status: 'pending',
+        }),
+      });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Gagal mengirim permintaan booking.');
       return;
+    } finally {
+      setSubmitting(false);
     }
 
     setSuccess(true);
@@ -121,8 +122,8 @@ export function RoomBookingModal({ open, onClose, room, onBooked, existingBookin
       {success ? (
         <div className="flex flex-col items-center py-10 text-center">
           <CheckCircle2 className="mb-3 h-12 w-12 text-emerald-600" />
-          <h3 className="text-lg font-semibold text-slate-900">Permintaan terkirim</h3>
-          <p className="mt-1 text-sm text-slate-500">Admin akan memeriksa jadwal booking Anda.</p>
+          <h3 className="text-lg font-semibold text-slate-900">Booking disetujui otomatis</h3>
+          <p className="mt-1 text-sm text-slate-500">Jadwal tersedia. Silakan check-in dengan QR saat tiba.</p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-5">

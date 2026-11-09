@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useAuthStore } from '@/store/authStore';
+import { useAuthStore } from '@/features/auth/store/authStore';
 import { LibraryBig, Mail, Lock, User, Phone, IdCard, ArrowRight, ArrowLeft } from 'lucide-react';
+import type { MemberType } from '@/lib/types';
 
 export function AuthPage() {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
@@ -10,6 +11,8 @@ export function AuthPage() {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [studentId, setStudentId] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
+  const [memberType, setMemberType] = useState<MemberType>('student');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -28,8 +31,8 @@ export function AuthPage() {
       const { error } = await signIn(email, password);
       if (error) setError(error);
     } else {
-      if (password.length < 6) {
-        setError('Kata sandi minimal 6 karakter.');
+      if (password.length < 8) {
+        setError('Kata sandi minimal 8 karakter.');
         return;
       }
       const { error } = await signUp({
@@ -38,7 +41,9 @@ export function AuthPage() {
         username,
         full_name: fullName,
         phone: phone || undefined,
-        student_id: studentId || undefined,
+        student_id: memberType === 'student' ? studentId || undefined : undefined,
+        employee_id: memberType === 'employee' ? employeeId || undefined : undefined,
+        member_type: memberType,
       });
       if (error) {
         setError(error);
@@ -112,7 +117,7 @@ export function AuthPage() {
           </div>
 
           <h2 className="text-2xl font-bold text-slate-900 mb-2">
-            {mode === 'login' ? 'Selamat datang kembali' : mode === 'signup' ? 'Buat akun mahasiswa' : 'Atur ulang kata sandi'}
+            {mode === 'login' ? 'Selamat datang kembali' : mode === 'signup' ? 'Buat akun pengguna' : 'Atur ulang kata sandi'}
           </h2>
           <p className="text-slate-500 mb-8">
             {mode === 'login'
@@ -150,20 +155,30 @@ export function AuthPage() {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <InputField
-                    icon={<Phone className="w-4 h-4" />}
-                    placeholder="Telepon (opsional)"
-                    value={phone}
-                    onChange={setPhone}
-                  />
-                  <InputField
-                    icon={<IdCard className="w-4 h-4" />}
-                    placeholder="NIM (opsional)"
-                    value={studentId}
-                    onChange={setStudentId}
-                  />
-                </div>
+                <label className="block text-sm font-medium text-slate-700">
+                  Jenis pengguna
+                  <select
+                    value={memberType}
+                    onChange={(event) => setMemberType(event.target.value === 'employee' ? 'employee' : 'student')}
+                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/15"
+                  >
+                    <option value="student">Mahasiswa</option>
+                    <option value="employee">Pegawai</option>
+                  </select>
+                </label>
+                <InputField
+                  icon={<Phone className="w-4 h-4" />}
+                  placeholder="Telepon (opsional)"
+                  value={phone}
+                  onChange={setPhone}
+                />
+                <InputField
+                  icon={<IdCard className="w-4 h-4" />}
+                  placeholder={memberType === 'student' ? 'NIM' : 'NIP'}
+                  value={memberType === 'student' ? studentId : employeeId}
+                  onChange={memberType === 'student' ? setStudentId : setEmployeeId}
+                  required
+                />
               </>
             )}
 
@@ -180,7 +195,7 @@ export function AuthPage() {
               <InputField
                 icon={<Lock className="w-4 h-4" />}
                 type="password"
-                placeholder="Kata sandi"
+                placeholder={mode === 'signup' ? 'Kata sandi (minimal 8 karakter)' : 'Kata sandi'}
                 value={password}
                 onChange={setPassword}
                 required

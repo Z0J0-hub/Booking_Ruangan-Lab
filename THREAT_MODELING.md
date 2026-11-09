@@ -7,7 +7,7 @@ The Lab Booking System is a web application that allows students, lab assistants
 ### Trust Boundaries
 
 1. **Client-to-Server**: User browser communicates with the application server over HTTPS
-2. **Server-to-Database**: Application server communicates with PostgreSQL database
+2. **Server-to-Database**: Application server communicates with MySQL database
 3. **Server-to-Mail**: Application server sends emails via SMTP
 4. **CI/CD-to-Registry**: Jenkins pushes Docker images to container registry
 5. **Registry-to-Production**: Production servers pull Docker images from registry
@@ -37,8 +37,8 @@ The Lab Booking System is a web application that allows students, lab assistants
 
 **Mitigations**:
 - **JWT authentication** with short expiry (15-30 minutes) and refresh token rotation
-- **Role stored in server-side JWT claims** (`raw_app_meta_data`), which is user-immutable in Supabase
-- **RBAC enforced at the database level** via Row-Level Security (RLS) policies - even if the client is compromised, the database rejects unauthorized operations
+- **Role loaded from a trusted server-side source** and validated for every request
+- **RBAC enforced by the backend API** so clients cannot bypass authorization checks
 - **bcrypt password hashing** with cost factor >= 12
 - **HTTPS/TLS** for all communications
 - **HttpOnly, Secure, SameSite cookies** for session tokens
@@ -65,19 +65,19 @@ The Lab Booking System is a web application that allows students, lab assistants
 - API parameter manipulation
 
 **Mitigations**:
-- **Parameterized queries** exclusively (Supabase client uses prepared statements)
-- **Row-Level Security (RLS)** policies ensure users can only modify their own bookings; staff can update status but not arbitrary fields
+- **Parameterized queries** exclusively through the backend's MySQL driver
+- **Server-side authorization** ensures users can only modify permitted bookings
 - **Input validation** on all API endpoints (server-side and client-side)
 - **Audit log triggers** automatically record all booking changes with before/after values
-- **Exclusion constraint** in database prevents overlapping bookings at the schema level
-- **Database encryption at rest** (Supabase-managed)
+- **Transaction-safe conflict checks** prevent overlapping bookings
+- **Database encryption at rest** configured on the MySQL host and storage
 
 ### Risk: Equipment status is tampered with
 
 **Mitigations**:
-- RLS policies restrict equipment status updates to lab assistants and admins only
+- Backend authorization restricts equipment status updates to lab assistants and admins only
 - Audit trigger logs all equipment status changes with the acting user's ID
-- Changes stored as JSONB in audit_logs for forensic analysis
+- Changes stored in a structured format in audit_logs for forensic analysis
 
 ---
 
@@ -93,7 +93,7 @@ The Lab Booking System is a web application that allows students, lab assistants
   - Action (what)
   - Resource type and ID (which)
   - Timestamp (when)
-  - Changes as JSONB (before/after values)
+  - Changes as structured before/after values
 - **Audit logs are immutable**: No UPDATE or DELETE policies on audit_logs table
 - **Email confirmations**: Booking creation triggers email notifications as independent evidence
 - **JWT-authenticated requests**: Every API call is tied to an authenticated user identity
@@ -121,7 +121,7 @@ The Lab Booking System is a web application that allows students, lab assistants
 - Logs containing sensitive data
 
 **Mitigations**:
-- **RLS policies**: Students can only read their own bookings; they cannot see other students' bookings
+- **Backend authorization**: Students can only read their own bookings; they cannot see other students' bookings
 - **No sensitive data in error messages**: Generic error responses without stack traces or internal details
 - **HTTPS only**: All data in transit is encrypted via TLS
 - **Environment variables for secrets**: No secrets hardcoded in source code
@@ -133,7 +133,7 @@ The Lab Booking System is a web application that allows students, lab assistants
 
 **Mitigations**:
 - Audit logs are only accessible to admin role
-- Changes are stored as structured JSONB, not free-text
+- Changes are stored as structured data, not free-text
 - No passwords or tokens are logged
 
 ---
@@ -161,8 +161,8 @@ The Lab Booking System is a web application that allows students, lab assistants
 ### Risk: Booking conflict detection is computationally expensive
 
 **Mitigations**:
-- Database-level exclusion constraint prevents conflicts at insert time
-- GiST index on time ranges for efficient overlap queries
+- Transaction-safe conflict checks prevent conflicts at insert time
+- MySQL indexes support efficient room and schedule conflict queries
 - Conflict check query is bounded and indexed
 
 ---
@@ -181,8 +181,8 @@ The Lab Booking System is a web application that allows students, lab assistants
 
 **Mitigations**:
 - **Never trust client role**: Role is verified server-side on every request via JWT claims
-- **Role stored in `raw_app_meta_data`**: User-immutable in Supabase - users cannot change their own role
-- **RLS enforced at database level**: Even if application-layer checks fail, the database rejects unauthorized access
+- **Role loaded from a trusted server-side source**: Users cannot change their own role
+- **Authorization enforced by the backend API** for every protected operation
 - **Least privilege principle**: Each role has only the minimum permissions needed
 - **Separate policies per CRUD verb**: No `FOR ALL` policies - each operation (SELECT, INSERT, UPDATE, DELETE) has its own policy with appropriate checks
 - **Admin-only operations**: User management, audit log access, and equipment deletion are admin-exclusive
@@ -190,7 +190,7 @@ The Lab Booking System is a web application that allows students, lab assistants
 ### Risk: Horizontal privilege escalation (student accesses another student's bookings)
 
 **Mitigations**:
-- RLS policies enforce `auth.uid() = user_id` for SELECT, UPDATE, DELETE on own bookings
+- API ownership checks ensure users can only read and modify their own bookings
 - Students cannot read other students' bookings
 - Object-level authorization on every request
 
@@ -202,9 +202,9 @@ The Lab Booking System is a web application that allows students, lab assistants
 |----------|---------|----------------|
 | Authentication | JWT with short expiry | 15-30 minute token lifetime |
 | Authentication | Password hashing | bcrypt with cost factor >= 12 |
-| Authentication | Session management | Supabase Auth with refresh tokens |
-| Authorization | RBAC server-side | RLS policies + JWT role claims |
-| Authorization | Least privilege | Per-verb RLS policies, role-scoped access |
+| Authentication | Session management | Backend API JWT lifecycle |
+| Authorization | RBAC server-side | API authorization + trusted role claims |
+| Authorization | Least privilege | Method-level API permissions |
 | Data Protection | TLS/HTTPS | All communications encrypted |
 | Data Protection | SQL injection prevention | Parameterized queries only |
 | Data Protection | XSS prevention | React auto-escaping, CSP headers |
@@ -239,8 +239,8 @@ The Lab Booking System is a web application that allows students, lab assistants
 The Lab Booking System implements defense-in-depth with multiple layers of security:
 
 1. **Application layer**: JWT authentication, input validation, rate limiting, RBAC middleware
-2. **Database layer**: Row-Level Security, exclusion constraints, audit triggers
+2. **Database layer**: MySQL access restricted to the backend, indexed booking conflict checks, audit logging
 3. **Transport layer**: HTTPS/TLS, CORS configuration
 4. **Infrastructure layer**: Docker containerization, secret management, CI/CD security scanning
 
-The most critical risks (spoofing and elevation of privilege) are mitigated by enforcing authorization at the database level via RLS, ensuring that even a compromised application layer cannot bypass access controls.
+The most critical risks (spoofing and elevation of privilege) must be mitigated by enforcing authorization in the backend API and limiting database access to that server.

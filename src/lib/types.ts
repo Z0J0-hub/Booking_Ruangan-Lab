@@ -1,4 +1,5 @@
-export type UserRole = 'student' | 'admin';
+export type UserRole = 'user' | 'admin';
+export type MemberType = 'student' | 'employee';
 
 export type BookingStatus =
   | 'pending'
@@ -13,8 +14,10 @@ export interface Profile {
   full_name: string;
   email: string;
   role: UserRole;
+  member_type: MemberType;
   phone: string | null;
   student_id: string | null;
+  employee_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -38,13 +41,18 @@ export interface Booking {
   purpose: string;
   status: BookingStatus;
   cancellation_reason: string | null;
+  checked_in_at?: string | null;
+  checkin_token?: string | null;
+  auto_approval_reason?: string | null;
   rejection_reason?: string | null;
   created_at: string;
   updated_at: string;
   // Joined fields
   room?: Room;
-  profile?: Profile;
+  profile?: Partial<Profile> & Pick<Profile, 'full_name'>;
 }
+
+export type BookingSchedule = Pick<Booking, 'id' | 'room_id' | 'start_time' | 'end_time' | 'status'>;
 
 export interface AuditLog {
   id: string;
@@ -57,4 +65,3 @@ export interface AuditLog {
   created_at: string;
   profile?: Profile;
 }
-
