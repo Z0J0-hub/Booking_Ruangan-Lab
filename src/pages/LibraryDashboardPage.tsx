@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { apiRequest } from '@/lib/api';
-import { useAuthStore } from '@/features/auth/store/authStore';
+import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/features/auth';
 import type { Booking, Room } from '@/lib/types';
 import { ArrowRight, CalendarDays, Clock3, DoorOpen, MapPin } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -22,19 +22,22 @@ export function LibraryDashboardPage({ onNavigate }: LibraryDashboardPageProps) 
     const fetchDashboard = async () => {
       if (!userId) return;
       setLoading(true);
-      try {
-        const [bookingResult, roomResult] = await Promise.all([
-          apiRequest<Booking[]>('/bookings?limit=12'),
-          apiRequest<Room[]>('/rooms'),
-        ]);
-        setBookings(bookingResult);
-        setRooms(roomResult);
-        setError('');
-      } catch (error) {
-        setError(error instanceof Error ? error.message : 'Gagal memuat dashboard.');
-      } finally {
-        setLoading(false);
-      }
+      let bookingQuery = supabase
+        .from('bookings')
+        .select(isAdmin ? '*, room:rooms(*), profile:profiles(*)' : '*, room:rooms(*)')
+        .not('room_id', 'is', null)
+        .order('start_time', { ascending: true })
+        .limit(12);
+      if (!isAdmin) bookingQuery = bookingQuery.eq('user_id', userId);
+
+      const [bookingResult, roomResult] = await Promise.all([
+        bookingQuery,
+        supabase.from('rooms').select('*').order('name'),
+      ]);
+      setError(bookingResult.error?.message || roomResult.error?.message || '');
+      setBookings((bookingResult.data as unknown as Booking[] | null) || []);
+      setRooms((roomResult.data as Room[] | null) || []);
+      setLoading(false);
     };
 
     void fetchDashboard();

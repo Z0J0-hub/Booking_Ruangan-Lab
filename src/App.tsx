@@ -1,16 +1,13 @@
 import { useEffect } from 'react';
-import { useAuthStore } from '@/features/auth/store/authStore';
-import { AuthPage } from '@/features/auth/pages/AuthPage';
+import { useAuthStore, AuthPage, ResetPasswordPage } from '@/features/auth';
 import { AppShell } from '@/components/AppShell';
 import { LibraryBig } from 'lucide-react';
-import { ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage';
-import { CheckInPage } from '@/features/bookings/pages/CheckInPage';
 
 export default function App() {
   const { initialized, initialize, user, passwordRecovery } = useAuthStore();
 
   useEffect(() => {
-    initialize();
+    return initialize();
   }, [initialize]);
 
   if (!initialized) {
@@ -30,13 +27,6 @@ export default function App() {
   }
 
   if (passwordRecovery) return <ResetPasswordPage />;
-  const checkinParams = new URLSearchParams(window.location.search);
-  const checkinId = checkinParams.get('checkin');
-  const checkinToken = checkinParams.get('token');
-  if (checkinId && checkinToken) {
-    if (!user) return <AuthPage />;
-    return <CheckInPage bookingId={checkinId} token={checkinToken} />;
-  }
   if (!user) return <AuthPage />;
   return <AppShell />;
 }

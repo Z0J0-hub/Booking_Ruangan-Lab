@@ -1,6 +1,23 @@
 pipeline {
     agent any
 
+    options {
+        skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+    }
+
+    parameters {
+        string(name: 'SUPABASE_URL', defaultValue: '', trim: true,
+            description: 'Public Supabase project URL for this build.')
+        string(name: 'SUPABASE_PUBLIC_KEY', defaultValue: '', trim: true,
+            description: 'Public anon/publishable key. Never enter a service_role/secret key.')
+    }
+
+    environment {
+        VITE_SUPABASE_URL = "${params.SUPABASE_URL ?: ''}"
+        VITE_SUPABASE_ANON_KEY = "${params.SUPABASE_PUBLIC_KEY ?: ''}"
+    }
+
     stages {
 
         stage('Cek Lingkungan') {
@@ -8,105 +25,113 @@ pipeline {
                 bat '''
                     whoami
                     hostname
-                
+
                     node --version
                     if errorlevel 1 exit /b 1
-                
+
                     call npm.cmd --version
                     if errorlevel 1 exit /b 1
-                
+
                     git --version
                     if errorlevel 1 exit /b 1
                 '''
             }
         }
-        
+
         stage('Checkout') {
             steps {
-                git branch: 'ilyas',
-                    url: 'https://github.com/Z0J0-hub/Booking_Ruangan-Lab.git'
-        
+                checkout scm
+
                 bat '''
-                    git branch --show-current
+                    git rev-parse --verify HEAD
                     if errorlevel 1 exit /b 1
-        
+
                     git log -1 --oneline
                     if errorlevel 1 exit /b 1
                 '''
             }
         }
-        
+
         stage('Install Dependencies') {
             steps {
                 bat '''
                     call npm.cmd ci --no-audit --no-fund
                     if errorlevel 1 exit /b 1
                 '''
-        
-                dir('backend') {
-                    bat '''
-                        call npm.cmd ci --no-audit --no-fund
-                        if errorlevel 1 exit /b 1
-                    '''
-                }
+
             }
         }
-        
-        stage('Dependency Audit') {
+
+        stage('CI Module Tests') {
             steps {
                 bat '''
-                    call npm.cmd audit --audit-level=high
+                    @echo off
+                    node --test scripts/ci/audit.test.mjs scripts/supabase/check.test.mjs
                     if errorlevel 1 exit /b 1
                 '''
-        
-                dir('backend') {
+            }
+        }
+
+        stage('Dependency Audit') {
+            steps {
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', catchInterruptions: false) {
                     bat '''
-                        call npm.cmd audit --audit-level=high
+                        @echo off
+                        call npm.cmd run ci:audit
                         if errorlevel 1 exit /b 1
                     '''
                 }
             }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/audit/*',
+                        fingerprint: true
+                }
+            }
         }
-        
+
         stage('Quality Checks') {
             steps {
                 bat '''
                     call npm.cmd run lint
                     if errorlevel 1 exit /b 1
-        
+
                     call npm.cmd run typecheck
                     if errorlevel 1 exit /b 1
                 '''
             }
         }
-        
-        stage('Backend Tests') {
+
+        stage('Supabase Configuration') {
             steps {
-                dir('backend') {
-                    bat '''
-                        call npm.cmd test
-                        if errorlevel 1 exit /b 1
-                    '''
-                }
+                bat '''
+                    @echo off
+                    call npm.cmd run supabase:check -- --mode=production
+                    if errorlevel 1 exit /b 1
+                '''
             }
         }
-        
+
+        stage('Auth Module Tests') {
+            steps {
+                bat '''
+                    @echo off
+                    call npm.cmd run test:auth
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+        }
+
         stage('Build') {
             steps {
                 bat '''
                     call npm.cmd run build
                     if errorlevel 1 exit /b 1
                 '''
-            
-                dir('backend') {
-                    bat '''
-                        call npm.cmd run build
-                        if errorlevel 1 exit /b 1
-                    '''
-                }
+
             }
         }
-        
+
         stage('Archive Build') {
             steps {
                 archiveArtifacts artifacts: 'dist/**',
