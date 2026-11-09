@@ -6,6 +6,18 @@ pipeline {
         disableConcurrentBuilds()
     }
 
+    parameters {
+        string(name: 'SUPABASE_URL', defaultValue: '', trim: true,
+            description: 'Public Supabase project URL for this build.')
+        string(name: 'SUPABASE_PUBLIC_KEY', defaultValue: '', trim: true,
+            description: 'Public anon/publishable key. Never enter a service_role/secret key.')
+    }
+
+    environment {
+        VITE_SUPABASE_URL = "${params.SUPABASE_URL ?: ''}"
+        VITE_SUPABASE_ANON_KEY = "${params.SUPABASE_PUBLIC_KEY ?: ''}"
+    }
+
     stages {
 
         stage('Cek Lingkungan') {
@@ -13,54 +25,48 @@ pipeline {
                 bat '''
                     whoami
                     hostname
-                
+
                     node --version
                     if errorlevel 1 exit /b 1
-                
+
                     call npm.cmd --version
                     if errorlevel 1 exit /b 1
-                
+
                     git --version
                     if errorlevel 1 exit /b 1
                 '''
             }
         }
-        
+
         stage('Checkout') {
             steps {
                 checkout scm
-        
+
                 bat '''
                     git rev-parse --verify HEAD
                     if errorlevel 1 exit /b 1
-        
+
                     git log -1 --oneline
                     if errorlevel 1 exit /b 1
                 '''
             }
         }
-        
+
         stage('Install Dependencies') {
             steps {
                 bat '''
                     call npm.cmd ci --no-audit --no-fund
                     if errorlevel 1 exit /b 1
                 '''
-        
-                dir('backend') {
-                    bat '''
-                        call npm.cmd ci --no-audit --no-fund
-                        if errorlevel 1 exit /b 1
-                    '''
-                }
+
             }
         }
-        
+
         stage('CI Module Tests') {
             steps {
                 bat '''
                     @echo off
-                    node --test scripts/ci/audit.test.mjs
+                    node --test scripts/ci/audit.test.mjs scripts/supabase/check.test.mjs
                     if errorlevel 1 exit /b 1
                 '''
             }
@@ -83,46 +89,49 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Quality Checks') {
             steps {
                 bat '''
                     call npm.cmd run lint
                     if errorlevel 1 exit /b 1
-        
+
                     call npm.cmd run typecheck
                     if errorlevel 1 exit /b 1
                 '''
             }
         }
-        
-        stage('Backend Tests') {
+
+        stage('Supabase Configuration') {
             steps {
-                dir('backend') {
-                    bat '''
-                        call npm.cmd test
-                        if errorlevel 1 exit /b 1
-                    '''
-                }
+                bat '''
+                    @echo off
+                    call npm.cmd run supabase:check -- --mode=production
+                    if errorlevel 1 exit /b 1
+                '''
             }
         }
-        
+
+        stage('Auth Module Tests') {
+            steps {
+                bat '''
+                    @echo off
+                    call npm.cmd run test:auth
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+        }
+
         stage('Build') {
             steps {
                 bat '''
                     call npm.cmd run build
                     if errorlevel 1 exit /b 1
                 '''
-            
-                dir('backend') {
-                    bat '''
-                        call npm.cmd run build
-                        if errorlevel 1 exit /b 1
-                    '''
-                }
+
             }
         }
-        
+
         stage('Archive Build') {
             steps {
                 archiveArtifacts artifacts: 'dist/**',

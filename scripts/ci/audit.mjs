@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -44,12 +44,16 @@ function inspectResult(result) {
 }
 
 // One interface owns both audits, reporting, and the final gate decision.
-export function runAudits({ root = projectRoot, runner = executeAudit } = {}) {
+export function runAudits({ root = projectRoot, runner = executeAudit, projects = ['frontend'] } = {}) {
   const reportDir = path.join(root, 'reports', 'audit');
   mkdirSync(reportDir, { recursive: true });
   const results = [];
 
-  for (const [target, cwd] of [['frontend', root], ['backend', path.join(root, 'backend')]]) {
+  // Backend MySQL is inactive on the Supabase architecture; do not publish old reports.
+  if (!projects.includes('backend')) rmSync(path.join(reportDir, 'backend.txt'), { force: true });
+
+  for (const target of projects) {
+    const cwd = target === 'frontend' ? root : path.join(root, target);
     let output;
     let outcome;
     try {

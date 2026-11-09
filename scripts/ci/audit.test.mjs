@@ -22,7 +22,7 @@ function workspace(t) {
 test('frontend findings still allow backend audit and both reports before failing', (t) => {
   const root = workspace(t);
   const visited = [];
-  const result = runAudits({ root, runner(cwd) {
+  const result = runAudits({ root, projects: ['frontend', 'backend'], runner(cwd) {
     visited.push(cwd);
     return cwd === root ? response({ high: 13 }) : response();
   } });
@@ -41,7 +41,7 @@ test('low and moderate findings pass the high/critical gate', (t) => {
 
 test('backend critical finding blocks even when frontend passes', (t) => {
   const root = workspace(t);
-  const result = runAudits({ root, runner: (cwd) => cwd === root ? response() : response({ critical: 1 }) });
+  const result = runAudits({ root, projects: ['frontend', 'backend'], runner: (cwd) => cwd === root ? response() : response({ critical: 1 }) });
   assert.equal(result.exitCode, 1);
   assert.equal(result.results[1].status, 'blocked');
 });
@@ -49,11 +49,21 @@ test('backend critical finding blocks even when frontend passes', (t) => {
 test('network error and malformed output are errors, not clean audits; summaries replace old results', (t) => {
   const root = workspace(t);
   runAudits({ root, runner: () => response() });
-  const result = runAudits({ root, runner(cwd) {
+  const result = runAudits({ root, projects: ['frontend', 'backend'], runner(cwd) {
     if (cwd === root) throw new Error('network unavailable');
     return { status: 1, stdout: 'not JSON', stderr: 'audit failed' };
   } });
   assert.equal(result.exitCode, 2);
   const saved = JSON.parse(readFileSync(path.join(root, 'reports/audit/summary.json'), 'utf8'));
   assert.deepEqual(saved.results.map((item) => item.status), ['error', 'error']);
+});
+
+test('Supabase audits only frontend and removes stale MySQL backend reports', (t) => {
+  const root = workspace(t);
+  runAudits({ root, projects: ['frontend', 'backend'], runner: () => response() });
+  const visited = [];
+  const result = runAudits({ root, runner(cwd) { visited.push(cwd); return response(); } });
+  assert.deepEqual(visited, [root]);
+  assert.equal(result.exitCode, 0);
+  assert.throws(() => readFileSync(path.join(root, 'reports/audit/backend.txt')), { code: 'ENOENT' });
 });
