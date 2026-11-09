@@ -2,6 +2,10 @@
 
 ## Proyek yang sudah pernah dipakai
 
+Untuk runner pemeriksaan RLS dengan fixture dan ROLLBACK, baca
+[STRIDE_TESTS.md](STRIDE_TESTS.md). Modul sudah disiapkan; eksekusi database
+memerlukan persetujuan project dan credential khusus, bukan public key frontend.
+
 Jika login dan database sudah bekerja pada project yang sama, **jangan jalankan
 ulang `initial_schema.sql` atau migrasi lama**. Periksa konfigurasi lokal dengan
 `npm run supabase:check`, lalu `npm run supabase:check -- --remote` untuk

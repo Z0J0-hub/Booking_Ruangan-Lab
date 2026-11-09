@@ -11,6 +11,10 @@ pipeline {
             description: 'Public Supabase project URL for this build.')
         string(name: 'SUPABASE_PUBLIC_KEY', defaultValue: '', trim: true,
             description: 'Public anon/publishable key. Never enter a service_role/secret key.')
+        booleanParam(name: 'RUN_STRIDE_DATABASE', defaultValue: false,
+            description: 'Opt-in: write synthetic fixtures to an approved development DB, then ROLLBACK. Read the STRIDE guide first.')
+        string(name: 'STRIDE_DB_HOST', defaultValue: '', trim: true,
+            description: 'Approved test database hostname only; never enter a password here.')
     }
 
     environment {
@@ -66,7 +70,7 @@ pipeline {
             steps {
                 bat '''
                     @echo off
-                    node --test scripts/ci/audit.test.mjs scripts/ci/secrets.test.mjs scripts/supabase/check.test.mjs
+                    node --test scripts/ci/audit.test.mjs scripts/ci/secrets.test.mjs scripts/supabase/check.test.mjs scripts/stride/run.test.mjs
                     if errorlevel 1 exit /b 1
                 '''
             }
@@ -137,6 +141,31 @@ pipeline {
                     call npm.cmd run test:auth
                     if errorlevel 1 exit /b 1
                 '''
+            }
+        }
+
+        stage('STRIDE Database') {
+            when { expression { params.RUN_STRIDE_DATABASE } }
+            options { timeout(time: 5, unit: 'MINUTES') }
+            steps {
+                // Only generated reports are cleared; credential errors must not publish stale results.
+                dir('reports/stride') { deleteDir() }
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', catchInterruptions: false) {
+                    withCredentials([string(credentialsId: 'supabase-stride-database-url', variable: 'STRIDE_DATABASE_URL')]) {
+                        withEnv(["STRIDE_DB_HOST=${params.STRIDE_DB_HOST}", 'STRIDE_ALLOW_TEST_WRITES=rollback-only']) {
+                            bat '''
+                                @echo off
+                                call npm.cmd run ci:stride
+                                if errorlevel 1 exit /b 1
+                            '''
+                        }
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/stride/*', fingerprint: true
+                }
             }
         }
 

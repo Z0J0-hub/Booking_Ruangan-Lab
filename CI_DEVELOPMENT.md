@@ -33,6 +33,7 @@ perlu setelah perubahan, lalu verifikasi melalui stage Cek Lingkungan.
 3. Setelah Jenkins membaca file ini, isi Build with Parameters:
    `SUPABASE_URL` dan `SUPABASE_PUBLIC_KEY` (anon/publishable key publik).
    Jangan gunakan service_role/secret key. Nilai publik tertanam pada artifact.
+   Biarkan `RUN_STRIDE_DATABASE=false` sampai credential dan project tes disetujui.
 4. Build pertama dengan parameter kosong akan gagal pada Supabase Configuration;
    isi parameter lalu jalankan ulang. File `.env` lokal tidak dikirim ke Jenkins.
 
@@ -40,7 +41,7 @@ Checkout hanya sekali melalui SCM. Branch/commit mengikuti konfigurasi job,
 termasuk jika berupa detached HEAD. `agent any` belum membatasi label Windows.
 
 Alur: cek lingkungan -> checkout -> install -> tes modul CI -> scan secret -> audit ->
-lint/typecheck -> konfigurasi Supabase -> tes modul auth -> build frontend -> archive.
+lint/typecheck -> konfigurasi Supabase -> tes modul auth -> [STRIDE database opsional] -> build frontend -> archive.
 Tidak ada install, tes, build, atau deployment backend MySQL pada versi aktif.
 
 ## Audit dan hasil
@@ -59,7 +60,7 @@ build merah bukan bukti kelulusan keamanan. Tidak ada deployment.
 ## Validasi
 
 ```bat
-node --test scripts/ci/audit.test.mjs scripts/ci/secrets.test.mjs scripts/supabase/check.test.mjs
+node --test scripts/ci/audit.test.mjs scripts/ci/secrets.test.mjs scripts/supabase/check.test.mjs scripts/stride/run.test.mjs
 npm.cmd run test:auth
 npm.cmd run supabase:check
 npm.cmd run supabase:check -- --remote
@@ -77,8 +78,12 @@ akun asli. Tes ini memeriksa perilaku integrasi lokal, bukan bukti Auth/RLS live
 Schema/trigger/policy dan tes SQL diperiksa lewat [panduan Supabase](supabase/README.md).
 [Matriks STRIDE](STRIDE_MATRIX.md) sudah disesuaikan ke Supabase/PostgreSQL;
 menjalankan tes unit modul tidak berarti tes RLS pada database sudah dijalankan.
-Trigger PR, scanner keamanan kode, tes Auth/RLS remote otomatis, dan deployment
-belum tersedia. Jenkinsfile utama adalah template legacy, bukan pipeline aktif.
+Runner tes RLS/trigger/constraint tersedia sebagai deep module dan stage opt-in.
+Empat belas skenario telah lolos manual pada project Supabase pengujian terpisah
+dengan rollback terkonfirmasi; eksekusi stage database lewat Jenkins belum diuji. Lihat
+[panduan tes STRIDE](supabase/STRIDE_TESTS.md) sebelum mengaktifkan stage.
+Trigger PR, scanner keamanan kode, tes Supabase Auth API, dan deployment belum
+tersedia. Jenkinsfile utama adalah template legacy, bukan pipeline aktif.
 
 ## Scan secret
 
