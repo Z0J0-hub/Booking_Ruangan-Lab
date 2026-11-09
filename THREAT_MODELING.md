@@ -1,5 +1,10 @@
 # Threat Modelling - STRIDE Analysis
 
+> Dokumen ini memuat rancangan legacy peminjaman alat dan sejumlah mitigasi yang
+> belum diverifikasi pada aplikasi saat ini. Untuk rencana pemeriksaan CI dan
+> status bukti aplikasi reservasi ruangan, gunakan [STRIDE_MATRIX.md](STRIDE_MATRIX.md).
+> Daftar mitigasi di bawah tidak boleh dianggap sebagai hasil tes yang sudah lolos.
+
 ## System Overview
 
 The Lab Booking System is a web application that allows students, lab assistants, and administrators to book and manage lab equipment at Universitas Telkom's Fakultas Teknik Elektro. The system handles authentication, booking management, equipment tracking, maintenance logging, and audit trails.

@@ -50,10 +50,14 @@ Jenkins, karena akun service dapat berbeda dari akun terminal pribadi.
    dan **Script Path** `Jenkinsfile.dev`.
 4. Pilih **Save → Build Now**, lalu periksa **Console Output** dan **Build Artifacts**.
 
-Alur: checkout → install dependency → audit → lint/typecheck → tes backend →
-build → archive frontend. Jika audit gagal, tahap setelahnya dilewati.
+Alur: checkout → install dependency → tes modul CI → audit → lint/typecheck →
+tes backend → build → archive frontend. Checkout hanya sekali melalui
+`checkout scm`, mengikuti repo dan revisi dari konfigurasi job. Pembacaan file
+pipeline dari SCM bukan checkout workspace tambahan.
 `agent any` belum membatasi pemilihan agent; jalankan job pada agent Windows.
-Checkout masih tetap ke `ilyas`, belum mengikuti branch PR secara otomatis.
+Untuk menguji branch lain, ubah Branch Specifier job. Penemuan dan trigger PR
+belum tersedia. Checkout bisa berupa detached HEAD; gunakan commit SHA pada
+log untuk memastikan revisi yang diperiksa.
 
 ## Audit dependency
 
@@ -72,6 +76,24 @@ Laporan disimpan di `reports/audit/`: `frontend.txt`, `backend.txt`,
 `summary.txt`, dan `summary.json`. Jenkins mengarsipkannya meskipun audit gagal.
 Folder laporan diabaikan oleh Git.
 
+Kegagalan command audit ditangkap oleh `catchError` dengan hasil stage dan build
+tetap `FAILURE`; lint, tes, dan build dapat dilanjutkan untuk mengumpulkan bukti.
+Pembatalan manual tidak ditangkap. Kegagalan persiapan, tes modul CI, pengarsipan,
+atau tahap lain tetap dapat menghentikan pipeline. Artifact `dist/` bisa tersedia
+pada build merah dan bukan bukti bahwa pemeriksaan keamanan lolos.
+
+## Pemeriksaan STRIDE
+
+Lihat [matriks STRIDE](STRIDE_MATRIX.md) untuk ancaman, kontrol yang terlihat,
+skenario tes, dan status buktinya. Matriks bukan scanner atau hasil tes otomatis.
+Tes keamanan API belum ditambahkan; unit test booking yang ada tidak membuktikan
+autentikasi, otorisasi, atau pencatatan aktivitas.
+
+Pengembangan berikutnya dimulai dari token tidak valid dan akses admin, kemudian
+kepemilikan booking, pembatasan data respons, serta batas request. Tes API perlu
+server dan MySQL khusus pengujian dengan data sintetis. Detail prasyarat ada di
+matriks; jangan memakai database kerja atau production.
+
 ## Validasi lokal
 
 Jalankan dari root proyek:
@@ -84,3 +106,11 @@ npm.cmd run ci:audit
 Perintah pertama menguji logika modul tanpa jaringan; perintah kedua menjalankan
 audit asli. Hasil gagal memang diharapkan jika ada temuan high/critical.
 Trigger PR, pemeriksaan STRIDE, build image Docker, dan deployment belum tersedia.
+
+Setelah perubahan ini di-push, jalankan ulang Jenkins: pastikan tidak ada stage
+`Declarative: Checkout SCM`, hanya satu stage `Checkout`, tes modul CI lolos,
+laporan kedua audit diarsipkan, dan tahap sesudah audit berjalan meskipun audit
+merah. Selama temuan high masih ada, hasil akhir harus tetap `FAILURE`.
+
+Referensi: [checkout SCM](https://www.jenkins.io/doc/book/pipeline/jenkinsfile/)
+dan [catchError](https://www.jenkins.io/doc/pipeline/steps/workflow-basic-steps/).
