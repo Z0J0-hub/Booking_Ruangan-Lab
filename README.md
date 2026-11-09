@@ -1,7 +1,5 @@
 # Library Room Booking System - Universitas Telkom
 
-Panduan development Windows: [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md).
-
 A web application for managing study-room bookings at Universitas Telkom's library. It replaces manual scheduling with room availability checks, booking management, and QR check-in.
 
 ## Features
@@ -97,7 +95,7 @@ project/
 ## Getting Started
 
 ### Prerequisites
-- Node.js 24
+- Node.js 18+
 - npm or yarn
 - Docker & Docker Compose (for containerized deployment)
 - Jenkins server (for CI/CD)
@@ -194,10 +192,6 @@ The frontend calls these routes:
 | POST | `/bookings/:id/check-in` | `{ message, checked_in_at }` |
 
 ## CI/CD Pipeline
-
-For development checks on Windows or Linux, use `Jenkinsfile.dev` and follow
-[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md). It installs dependencies, runs
-`npm run check`, and archives the frontend build without deployment.
 
 The Jenkinsfile defines a declarative pipeline with these stages:
 

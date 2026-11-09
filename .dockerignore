@@ -1,5 +1,4 @@
 .git
-.jenkins-local
 .env
 .env.*
 !.env.example
