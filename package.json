@@ -8,6 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "ci:audit": "node scripts/ci/audit.mjs",
+    "ci:secrets": "node scripts/ci/secrets.mjs",
+    "ci:secrets:setup": "node scripts/ci/gitleaks-tool.mjs",
     "supabase:check": "node scripts/supabase/check.mjs",
     "test:auth": "node --experimental-strip-types --test src/features/auth/auth.test.mjs",
     "preview": "vite preview",

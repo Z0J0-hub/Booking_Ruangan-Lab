@@ -8,6 +8,7 @@ lerna-debug.log*
 
 node_modules
 reports/
+.tools/
 dist
 dist-ssr
 *.local

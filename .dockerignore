@@ -3,6 +3,8 @@
 .env.*
 !.env.example
 node_modules
+.tools
+reports
 **/node_modules
 dist
 coverage

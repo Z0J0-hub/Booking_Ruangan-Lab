@@ -66,9 +66,27 @@ pipeline {
             steps {
                 bat '''
                     @echo off
-                    node --test scripts/ci/audit.test.mjs scripts/supabase/check.test.mjs
+                    node --test scripts/ci/audit.test.mjs scripts/ci/secrets.test.mjs scripts/supabase/check.test.mjs
                     if errorlevel 1 exit /b 1
                 '''
+            }
+        }
+
+        stage('Secret Scan') {
+            steps {
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', catchInterruptions: false) {
+                    bat '''
+                        @echo off
+                        call npm.cmd run ci:secrets
+                        if errorlevel 1 exit /b 1
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/secrets/*',
+                        fingerprint: true
+                }
             }
         }
 
