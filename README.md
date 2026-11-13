@@ -46,6 +46,9 @@ constraint database tetap menolak bentrok lintas pengguna.
 
 ## Validasi dan CI
 
+[Rencana CI dan keamanan](CI_SECURITY_PLAN.md) memetakan kebutuhan proposal ke gate,
+tes, bukti, batas cakupan, dan setup PR menuju development.
+
 [Modul auth](src/features/auth/README.md) mengelompokkan halaman, service Supabase,
 dan store sesi. Fitur lain memakai interface `@/features/auth`.
 
@@ -53,15 +56,24 @@ dan store sesi. Fitur lain memakai interface `@/features/auth`.
 npm.cmd run lint
 npm.cmd run typecheck
 npm.cmd run test:auth
+npm.cmd run test:ci
+npm.cmd run test:secret-gate
+npm.cmd run ci:sast
+npm.cmd run test:stride-runner
 npm.cmd run build
 npm.cmd run ci:audit
+npm.cmd run ci:secrets
 node --test scripts/ci/audit.test.mjs scripts/supabase/check.test.mjs
 ```
 
 [CI_DEVELOPMENT.md](CI_DEVELOPMENT.md) menjelaskan Jenkins Windows. Audit memeriksa
 paket frontend aktif; dependency server legacy tidak ikut dianggap backend aktif.
+Scan secret memeriksa source kerja menggunakan Gitleaks portable, dengan laporan
+tanpa nilai credential. Pengembangan CI dilakukan di `ilyas`, lalu PR ke `development`.
 [Matriks STRIDE](STRIDE_MATRIX.md) membedakan kontrol sumber dan bukti yang belum diuji.
 Build/lint bukan bukti login, database, atau RLS sudah berjalan pada project remote.
+Runner [STRIDE database](supabase/STRIDE_TESTS.md) tersedia sebagai tahap opt-in;
+tes lokal runner tidak mengakses database dan tidak membuktikan policy remote.
 
 ## Docker opsional
 

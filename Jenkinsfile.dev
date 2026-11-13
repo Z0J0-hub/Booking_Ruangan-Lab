@@ -4,6 +4,8 @@ pipeline {
     options {
         skipDefaultCheckout(true)
         disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10'))
     }
 
     parameters {
@@ -11,17 +13,24 @@ pipeline {
             description: 'Public Supabase project URL for this build.')
         string(name: 'SUPABASE_PUBLIC_KEY', defaultValue: '', trim: true,
             description: 'Public anon/publishable key. Never enter a service_role/secret key.')
+        booleanParam(name: 'RUN_STRIDE_DATABASE', defaultValue: false,
+            description: 'Opt-in: write synthetic fixtures to an approved development DB, then ROLLBACK. Read the STRIDE guide first.')
+        string(name: 'STRIDE_DB_HOST', defaultValue: '', trim: true,
+            description: 'Approved test database hostname only; never enter a password here.')
     }
 
     environment {
-        VITE_SUPABASE_URL = "${params.SUPABASE_URL ?: ''}"
-        VITE_SUPABASE_ANON_KEY = "${params.SUPABASE_PUBLIC_KEY ?: ''}"
+        VITE_SUPABASE_URL = "${params.SUPABASE_URL ?: env.CI_SUPABASE_URL ?: ''}"
+        VITE_SUPABASE_ANON_KEY = "${params.SUPABASE_PUBLIC_KEY ?: env.CI_SUPABASE_PUBLIC_KEY ?: ''}"
     }
 
     stages {
 
         stage('Cek Lingkungan') {
             steps {
+                script {
+                    if (isUnix()) { error('Jenkinsfile.dev requires a Windows agent.') }
+                }
                 bat '''
                     whoami
                     hostname
@@ -52,6 +61,16 @@ pipeline {
             }
         }
 
+        stage('Pipeline Policy') {
+            steps {
+                // Remove generated reports from older runs on reused agents.
+                dir('reports') { deleteDir() }
+                withEnv(["RUN_STRIDE_DATABASE=${params.RUN_STRIDE_DATABASE}"]) {
+                    bat 'node scripts/ci/policy.mjs'
+                }
+            }
+        }
+
         stage('Install Dependencies') {
             steps {
                 bat '''
@@ -66,26 +85,53 @@ pipeline {
             steps {
                 bat '''
                     @echo off
-                    node --test scripts/ci/audit.test.mjs scripts/supabase/check.test.mjs
+                    call npm.cmd run test:ci
                     if errorlevel 1 exit /b 1
                 '''
             }
         }
 
+        stage('Secret Scan') {
+            steps {
+                bat '''
+                    @echo off
+                    call npm.cmd run ci:secrets
+                    if errorlevel 1 exit /b 1
+                    call npm.cmd run test:secret-gate
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/secrets/*',
+                        fingerprint: true
+                }
+            }
+        }
+
         stage('Dependency Audit') {
             steps {
-                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', catchInterruptions: false) {
-                    bat '''
-                        @echo off
-                        call npm.cmd run ci:audit
-                        if errorlevel 1 exit /b 1
-                    '''
-                }
+                bat '''
+                    @echo off
+                    call npm.cmd run ci:audit
+                    if errorlevel 1 exit /b 1
+                '''
             }
             post {
                 always {
                     archiveArtifacts artifacts: 'reports/audit/*',
                         fingerprint: true
+                }
+            }
+        }
+
+        stage('SAST') {
+            steps {
+                bat 'call npm.cmd run ci:sast'
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/sast/*', fingerprint: true
                 }
             }
         }
@@ -119,6 +165,35 @@ pipeline {
                     call npm.cmd run test:auth
                     if errorlevel 1 exit /b 1
                 '''
+            }
+        }
+
+        stage('STRIDE Database') {
+            when {
+                allOf {
+                    expression { params.RUN_STRIDE_DATABASE }
+                    branch 'development'
+                    not { changeRequest() }
+                }
+            }
+            options { timeout(time: 5, unit: 'MINUTES') }
+            steps {
+                // Only generated reports are cleared; credential errors must not publish stale results.
+                dir('reports/stride') { deleteDir() }
+                withCredentials([string(credentialsId: 'supabase-stride-database-url', variable: 'STRIDE_DATABASE_URL')]) {
+                    withEnv(["STRIDE_DB_HOST=${params.STRIDE_DB_HOST}", 'STRIDE_ALLOW_TEST_WRITES=rollback-only']) {
+                        bat '''
+                            @echo off
+                            call npm.cmd run ci:stride
+                            if errorlevel 1 exit /b 1
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/stride/*', fingerprint: true
+                }
             }
         }
 
