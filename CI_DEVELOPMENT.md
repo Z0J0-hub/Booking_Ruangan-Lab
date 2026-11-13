@@ -23,7 +23,7 @@ PATH berisi folder tempat shell mencari program. Pastikan folder instalasi
 tersedia bagi akun service Jenkins; buka terminal baru/restart service bila
 perlu setelah perubahan, lalu verifikasi melalui stage Cek Lingkungan.
 
-## Konfigurasi job
+## Konfigurasi job manual yang sudah ada
 
 1. Pilih Pipeline script from SCM, SCM Git, dan repo
    `https://github.com/Z0J0-hub/Booking_Ruangan-Lab.git`.
@@ -40,9 +40,16 @@ perlu setelah perubahan, lalu verifikasi melalui stage Cek Lingkungan.
 Checkout hanya sekali melalui SCM. Branch/commit mengikuti konfigurasi job,
 termasuk jika berupa detached HEAD. `agent any` belum membatasi label Windows.
 
-Alur: cek lingkungan -> checkout -> install -> tes modul CI -> scan secret -> audit ->
-lint/typecheck -> konfigurasi Supabase -> tes modul auth -> [STRIDE database opsional] -> build frontend -> archive.
+Alur: cek lingkungan -> checkout -> policy PR -> install -> tes modul CI -> scan secret
+dan tes gate Gitleaks nyata -> audit -> SAST -> lint/typecheck -> konfigurasi Supabase
+-> tes modul auth -> [STRIDE database opsional] -> build frontend -> archive.
 Tidak ada install, tes, build, atau deployment backend MySQL pada versi aktif.
+
+Target pemicu utama sekarang **pull request menuju development**. Gunakan konfigurasi
+Multibranch pada [rencana CI dan keamanan](CI_SECURITY_PLAN.md). Job manual `ilyas`
+tetap dapat menguji source, tetapi tidak diberi credential database. Database opt-in
+memerlukan `BRANCH_NAME=development` dari Multibranch; jangan memalsukan variabel
+tersebut pada job classic untuk melewati guard.
 
 ## Audit dan hasil
 
@@ -52,15 +59,18 @@ aktif; laporan backend lama dibersihkan agar tidak terbaca sebagai hasil baru.
 Temuan high/critical membuat modul keluar dengan status 1, error audit dengan 2,
 dan hasil di bawah ambang dengan 0. Tidak ada perbaikan dependency otomatis.
 
-Jenkins mengarsipkan laporan meskipun gagal. catchError membuat audit tetap merah
-sambil membolehkan pemeriksaan berikutnya berjalan; hasil akhir tetap FAILURE.
-Pembatalan manual dan kegagalan persiapan tidak diabaikan. Artifact dist pada
-build merah bukan bukti kelulusan keamanan. Tidak ada deployment.
+Jenkins mengarsipkan laporan tahap yang dijalankan meskipun gagal. Gate sekarang
+**fail-fast**: temuan atau error menghentikan tahap berikutnya; tidak ada catchError
+yang melanjutkan build. Stage Archive Build hanya dicapai setelah gate wajib lolos.
+Laporan lama dibersihkan pada awal run agar tidak dibaca sebagai hasil baru.
+Timeout keseluruhan 30 menit; 10 build beserta artifact dipertahankan. Tidak ada deployment.
 
 ## Validasi
 
 ```bat
-node --test scripts/ci/audit.test.mjs scripts/ci/secrets.test.mjs scripts/supabase/check.test.mjs scripts/stride/run.test.mjs
+npm.cmd run test:ci
+npm.cmd run test:secret-gate
+npm.cmd run ci:sast
 npm.cmd run test:auth
 npm.cmd run supabase:check
 npm.cmd run supabase:check -- --remote
@@ -82,7 +92,10 @@ Runner tes RLS/trigger/constraint tersedia sebagai deep module dan stage opt-in.
 Empat belas skenario telah lolos manual pada project Supabase pengujian terpisah
 dengan rollback terkonfirmasi; eksekusi stage database lewat Jenkins belum diuji. Lihat
 [panduan tes STRIDE](supabase/STRIDE_TESTS.md) sebelum mengaktifkan stage.
-Trigger PR, scanner keamanan kode, tes Supabase Auth API, dan deployment belum
+SAST terpilih tersedia melalui ESLint + eslint-plugin-security; lingkup dan batasnya
+ada pada rencana CI. Policy target PR tersedia, tetapi webhook, discovery PR, dan
+required checks harus diaktifkan pada Jenkins/GitHub; file repo tidak mengaktifkan
+job eksternal dengan sendirinya. Tes Supabase Auth API, DAST, dan deployment belum
 tersedia. Jenkinsfile utama adalah template legacy, bukan pipeline aktif.
 
 ## Scan secret
@@ -107,8 +120,8 @@ aturan yang melaporkannya. Tidak ada allowlist project yang menutupi temuan seca
 umum. Komentar bypass `gitleaks:allow` dan file ignore fingerprint tidak dipakai.
 
 Hasil modul: `0` lolos, `1` temuan, `2` error alat/config/report. Error bukan hasil
-bersih. Jenkins mempertahankan stage/build FAILURE tetapi melanjutkan pemeriksaan
-lain. `reports/secrets/` diarsipkan meskipun gagal: `findings.json` hanya berisi
+bersih. Jenkins menghentikan tahap berikutnya dan mempertahankan FAILURE.
+`reports/secrets/` diarsipkan meskipun gagal: `findings.json` hanya berisi
 rule/file/baris, ditambah `summary.json` dan `summary.txt`. Nilai secret, teks
 match, baris source, serta output mentah alat tidak diarsipkan atau dicetak.
 

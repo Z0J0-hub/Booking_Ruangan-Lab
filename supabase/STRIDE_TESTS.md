@@ -80,8 +80,16 @@ File tersebut diabaikan Git. `.env` frontend tidak otomatis dibaca runner.
 Gunakan password yang di-URL-encode jika menyusun connection string sendiri.
 
 Untuk Jenkins, siapkan plugin Credentials Binding dan credential **Secret text**
-dengan ID `supabase-stride-database-url`. Jalankan hanya job/branch terpercaya:
-credential setup dapat memiliki izin database luas dan tidak boleh diberikan
+dengan ID `supabase-stride-database-url`. Jalankan hanya job/branch terpercaya.
+
+Pipeline sekarang menolak permintaan database dari PR dan job selain branch
+Multibranch `development`. Gunakan folder/agent terpercaya terpisah, dengan
+credential hanya pada folder tersebut; folder PR tidak boleh mewarisinya.
+Policy kode bukan pengganti isolasi credential karena Jenkinsfile PR dapat diubah.
+Lihat [setup CI](../CI_SECURITY_PLAN.md) sebelum mengaktifkan stage. Job classic
+`ilyas` tetap dapat menguji source, tetapi tidak menjalankan stage database.
+
+Credential setup dapat memiliki izin database luas dan tidak boleh diberikan
 kepada PR dari kode tak tepercaya. Setelah tes remote disetujui, centang
 `RUN_STRIDE_DATABASE` dan isi `STRIDE_DB_HOST`. Default false membuat stage
 dilewati, bukan lolos. Menyiapkan modul tidak mengaktifkan stage secara otomatis.

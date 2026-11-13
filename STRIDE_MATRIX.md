@@ -1,6 +1,10 @@
 # Matriks STRIDE - Supabase Auth / PostgreSQL
 
 Lingkup: React berkomunikasi langsung dengan Supabase Auth dan Data API.
+
+Hubungan ancaman proposal dengan gate CI dan batas tes dijelaskan pada
+[rencana CI dan keamanan](CI_SECURITY_PLAN.md). SAST terpilih melengkapi kontrol
+source; tidak menggantikan tes JWT/Auth API, RLS, atau seluruh kategori STRIDE.
 PostgreSQL menerapkan RLS, trigger profil/audit, dan constraint booking.
 Express/MySQL bukan backend aktif. Matriks ini menggantikan rencana tes API
 MySQL pada commit CI sebelumnya. Hasil di bawah berlaku sesuai lingkungan dan
