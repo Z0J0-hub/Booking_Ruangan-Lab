@@ -2,11 +2,16 @@ pipeline {
     agent any
 
     options {
+        timestamps()
         skipDefaultCheckout(true)
         disableConcurrentBuilds()
         timeout(time: 30, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10'))
     }
+
+    // Local Jenkins can poll without exposing localhost through a public tunnel.
+    // Multibranch indexing discovers new PRs; polling observes updates to existing jobs.
+    triggers { pollSCM('H/5 * * * *') }
 
     parameters {
         string(name: 'SUPABASE_URL', defaultValue: '', trim: true,
@@ -79,6 +84,19 @@ pipeline {
                 '''
 
             }
+        }
+
+        stage('Infrastructure Configuration') {
+            steps {
+                bat '''
+                    @echo off
+                    call npm.cmd run ci:infra:setup
+                    if errorlevel 1 exit /b 1
+                    call npm.cmd run ci:infra
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+            post { always { archiveArtifacts artifacts: 'reports/infra/summary.json', allowEmptyArchive: true, fingerprint: true } }
         }
 
         stage('CI Module Tests') {
@@ -205,6 +223,30 @@ pipeline {
                 '''
 
             }
+        }
+
+        stage('DAST Staging') {
+            options { timeout(time: 12, unit: 'MINUTES') }
+            steps {
+                bat '''
+                    @echo off
+                    call npm.cmd run ci:dast:setup
+                    if errorlevel 1 exit /b 1
+                    call npm.cmd run ci:dast
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/dast/summary.json,reports/dast/summary.txt',
+                        allowEmptyArchive: true, fingerprint: true
+                }
+            }
+        }
+
+        stage('Operations Drill') {
+            steps { bat 'call npm.cmd run ops:drill' }
+            post { always { archiveArtifacts artifacts: 'reports/ops/*', allowEmptyArchive: true, fingerprint: true } }
         }
 
         stage('Archive Build') {

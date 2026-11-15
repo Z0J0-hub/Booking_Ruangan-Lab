@@ -1,5 +1,9 @@
 # CI Development - Supabase
 
+Pengembangan PR otomatis, job bukti fail-fast, dan tahap DAST setelah build
+dijelaskan pada [CI_PR_DAST.md](CI_PR_DAST.md). Catatan validasi lama di bawah
+adalah baseline sebelum penambahan tersebut, bukan status hasil build terbaru.
+
 `Jenkinsfile.dev` berjalan pada agent Jenkins Windows karena memakai `bat`.
 Dukungan sistem operasi lain belum dikembangkan. Docker dan WSL tidak diperlukan.
 

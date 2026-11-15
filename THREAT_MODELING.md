@@ -1,5 +1,8 @@
 # Threat Modeling
 
+Diagram arsitektur dan pemetaan batas kepercayaan terbaru: [ARCHITECTURE.md](ARCHITECTURE.md).
+Kontrol operasi lokal dan gap SIEM/cloud: [OPERATIONS.md](OPERATIONS.md).
+
 Aplikasi aktif menggunakan React, Supabase Auth, Data API, dan PostgreSQL.
 Gunakan [STRIDE_MATRIX.md](STRIDE_MATRIX.md) sebagai matriks ancaman dan bukti.
 

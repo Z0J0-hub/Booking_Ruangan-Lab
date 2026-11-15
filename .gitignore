@@ -12,6 +12,8 @@ reports/
 dist
 dist-ssr
 *.local
+*.local.json
+.runtime/
 
 .vscode/*
 !.vscode/extensions.json

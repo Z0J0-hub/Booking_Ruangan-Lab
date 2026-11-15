@@ -1,5 +1,12 @@
 # Reservasi Ruangan Perpustakaan
 
+Dokumen aktif: [arsitektur](ARCHITECTURE.md), [operasi dan demo rollback Windows](OPERATIONS.md),
+[status seluruh rubrik](RUBRIK_STATUS.md), serta [CI/PR/DAST](CI_PR_DAST.md).
+Untuk demo lokal terpantau: `npm.cmd run build` lalu `npm.cmd run ops:serve`.
+Drill terisolasi: `npm.cmd run ops:drill`.
+Panduan presentasi: [DEMO_CHECKLIST.md](DEMO_CHECKLIST.md); bahan paper:
+[PAPER_DRAFT.md](PAPER_DRAFT.md) (belum final).
+
 React + TypeScript + Vite dengan Supabase Auth dan PostgreSQL. Versi ini
 memulihkan aplikasi dari branch lokal `kirim-supabase`, sambil mempertahankan
 pipeline CI. Browser mengakses Supabase langsung; Express/MySQL di `backend/`
