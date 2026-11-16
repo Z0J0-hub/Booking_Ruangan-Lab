@@ -71,3 +71,8 @@ Buka nomor build pada reservasi-pipeline, lalu **Artifacts**:
 Form dan aturan PR terbaru dijelaskan di [PR_OWASP_2025.md](PR_OWASP_2025.md).
 Log ini memakai aturan PR lama; versi baru menerima branch asal mana pun dalam
 repo tim, dengan tujuan tetap development.
+
+Pilihan pemeriksaan aplikasi juga sudah diperbarui menjadi **Periksa kode branch
+ilyas terbaru**. Log contoh di atas tetap merupakan catatan build lama. Build branch
+baru mengambil source terbaru dari GitHub; nomor versinya terlihat di keterangan
+build dan `reports/source/summary.txt`, bukan ditentukan oleh pin pipeline.

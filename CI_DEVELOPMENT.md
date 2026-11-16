@@ -4,8 +4,14 @@ Sejak konsolidasi 16 November, semua pemeriksaan Windows dan proof fail-fast
 dijalankan dari reservasi-pipeline / Jenkinsfile.dev. Form build terbaru memakai
 PILIH_PEMERIKSAAN, bukan RUN_MODE/PROOF_GATE. Ikuti [panduan form terbaru](PR_OWASP_2025.md)
 untuk pilihan kode PR, versi aplikasi, dan percobaan alat. Konfigurasi branch dinamis,
-parameter database dan contoh FAILURE di bawah adalah catatan konfigurasi lama;
-job aktif menggunakan pin versi yang terlihat di form. Job percobaan lama dipindahkan
+parameter database dan contoh FAILURE di bawah adalah catatan konfigurasi lama.
+Job aktif memuat definisi pipeline dari versi yang disetujui; pilihan **Periksa kode
+branch ilyas terbaru** mengambil kode aplikasi terbaru dari GitHub secara terpisah.
+Lihat **Artifacts -> reports/source/summary.txt** untuk versi aplikasi yang diperiksa;
+`summary.json` mencatat `commit` aplikasi dan `pipelineCommit` pengaturan Jenkins.
+Perubahan kode biasa yang sudah di-push ke ilyas ikut build branch berikutnya tanpa
+mengubah pin pipeline. Push setelah tahap pengambilan kode ikut build selanjutnya.
+Job percobaan lama dipindahkan
 ke folder arsip-reservasi nonaktif.
 
 Pengembangan PR otomatis, job bukti fail-fast, dan tahap DAST setelah build
