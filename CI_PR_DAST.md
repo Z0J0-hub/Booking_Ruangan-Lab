@@ -1,5 +1,10 @@
 # PR security CI, bukti fail-fast, dan DAST staging
 
+Pembaruan berikutnya mengaktifkan polling PR ilyas -> development, dengan scanner
+terpercaya yang dipin dan Semgrep/OWASP 2025. [PR_OWASP_2025.md](PR_OWASP_2025.md)
+menjadi panduan aktif untuk PR; bagian konsolidasi/histori di bawah adalah baseline
+sebelum penambahan tersebut. Status GitHub/required checks tetap terpisah.
+
 ## Penggunaan aktif sejak 16 November 2026: satu job
 
 Gunakan **reservasi-pipeline**, branch `ilyas`, Script Path `Jenkinsfile.dev`.

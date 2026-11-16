@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,13 +8,13 @@ const mode = process.argv[2];
 if (mode === 'clean') {
   // This generated fixture directory is the only cleanup target.
   rmSync(directory, { recursive: true, force: true });
-} else if (['secret', 'sast'].includes(mode)) {
+} else if (['secret', 'sast', 'owasp'].includes(mode)) {
   mkdirSync(directory, { recursive: true });
-  const source = mode === 'secret'
+  const source = mode === 'owasp' ? readFileSync(path.join(root, 'security', 'semgrep', 'fixtures', 'vulnerable.txt'), 'utf8') : mode === 'secret'
     ? `export const synthetic = '${['sb', 'secret', 'JenkinsProofOnlyNotARealCredential123456789'].join('_')}';\n`
     : `${['ev', 'al'].join('')}('1 + 1');\n`;
   writeFileSync(path.join(directory, 'fixture.mjs'), source);
   console.log(`Created synthetic ${mode} fixture; never a real credential; do not commit generated files.`);
 } else {
-  throw new Error('Expected secret, sast, or clean.');
+  throw new Error('Expected secret, sast, owasp, or clean.');
 }

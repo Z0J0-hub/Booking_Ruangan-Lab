@@ -2,6 +2,7 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { validateConfig } from '../supabase/check.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -123,6 +124,32 @@ try {
     const xml = readFileSync(path.join(root, 'scripts', 'jenkins', 'multibranch.xml'), 'utf8').replace('__GITHUB_CREDENTIALS_ID__', xmlEscape(credentialId));
     await request(`/createItem?name=${encodeURIComponent(job)}`, { method: 'POST', headers: { 'Content-Type': 'application/xml' }, body: xml });
     console.log(`Created disabled multibranch job ${job}. Verify isolated agent, public Supabase configuration, and GitHub status credential before enabling.`);
+  } else if (command === 'activate-pr') {
+    const revision = process.argv[4];
+    if (!/^[a-f0-9]{40}$/.test(revision || '')) throw new Error('Provide the exact reviewed scanner commit SHA.');
+    const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true });
+    const dirty = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8', windowsHide: true });
+    if (head.status !== 0 || head.stdout.trim() !== revision || dirty.status !== 0 || dirty.stdout.trim()) throw new Error('Commit and review local changes before activating the trusted PR scanner.');
+    const before = await (await request('/job/reservasi-pipeline/config.xml')).text();
+    if (!before.includes('CpsScmFlowDefinition') || !before.includes('https://github.com/Z0J0-hub/Booking_Ruangan-Lab.git') || !before.includes('<scriptPath>Jenkinsfile.dev</scriptPath>')) throw new Error('Unexpected main SCM configuration.');
+    const after = before.replace(/(<hudson\.plugins\.git\.BranchSpec>\s*<name>)[^<]+(<\/name>\s*<\/hudson\.plugins\.git\.BranchSpec>)/, (_, prefix, suffix) => prefix + revision + suffix);
+    if (after === before && !before.includes(`<name>${revision}</name>`)) throw new Error('Cannot identify SCM revision.');
+    const backup = path.join(root, '.runtime', 'jenkins-pr-activation'); mkdirSync(backup, { recursive: true });
+    writeFileSync(path.join(backup, 'before.xml'), before);
+    await request('/job/reservasi-pipeline/config.xml', { method: 'POST', headers: { 'Content-Type': 'application/xml' }, body: after });
+    const verify = await (await request('/job/reservasi-pipeline/config.xml')).text();
+    if (!verify.includes(`<name>${revision}</name>`)) throw new Error('Trusted revision not confirmed.');
+    writeFileSync(path.join(reportDir, 'pr-activation.json'), JSON.stringify({ job: 'reservasi-pipeline', trustedScannerRevision: revision,
+      target: 'development', source: 'ilyas', mode: 'data-only PR merge SAST', pollingMinutes: 5 }, null, 2) + '\n');
+    console.log(`Trusted PR scanner pinned to ${revision}. Run one full/manual build to register the timer and PR parameters.`);
+  } else if (command === 'build-pr') {
+    if (job !== 'reservasi-pipeline') throw new Error('Use the main pipeline for PR scans.');
+    const number = process.argv[4] || '';
+    if (number && !/^[1-9][0-9]*$/.test(number)) throw new Error('Invalid PR number.');
+    const values = await publicConfiguration();
+    const body = new URLSearchParams({ ...values, RUN_MODE: 'pr', PR_NUMBER: number, PR_FORCE_RESCAN: 'true', PROOF_GATE: 'none', RUN_STRIDE_DATABASE: 'false', STRIDE_DB_HOST: '' });
+    const response = await request(`${jobPath}/buildWithParameters`, { method: 'POST', body });
+    console.log(`PR check queued: ${response.headers.get('location') || 'check queue'}`);
   } else if (command === 'configure-main') {
     const before = await (await request('/job/reservasi-pipeline/config.xml')).text();
     if (!before.includes('CpsScmFlowDefinition') || !before.includes('<scriptPath>Jenkinsfile.dev</scriptPath>') || !before.includes('<name>*/ilyas</name>')) {
@@ -209,15 +236,15 @@ println('Main pipeline: ' + main.fullName)
     console.log(`Queued: ${response.headers.get('location') || 'check job queue'}`);
   } else if (command === 'build-validation') {
     const values = await publicConfiguration();
-    const body = new URLSearchParams({ ...values, PROOF_GATE: 'none', RUN_STRIDE_DATABASE: 'false', STRIDE_DB_HOST: '' });
+    const body = new URLSearchParams({ ...values, RUN_MODE: 'full', PR_NUMBER: '', PR_FORCE_RESCAN: 'false', PROOF_GATE: 'none', RUN_STRIDE_DATABASE: 'false', STRIDE_DB_HOST: '' });
     const response = await request(`${jobPath}/buildWithParameters`, { method: 'POST', body });
     console.log(`Validation queued with existing public configuration: ${response.headers.get('location') || 'check job queue'}`);
   } else if (command === 'build-proof') {
     const gate = process.argv[4] || 'secret';
-    if (!['secret', 'sast'].includes(gate)) throw new Error('Invalid proof gate.');
+    if (!['secret', 'sast', 'owasp'].includes(gate)) throw new Error('Invalid proof gate.');
     // Parameters are registered on the first build; initialize with a normal build if needed.
     const values = job === 'reservasi-pipeline' ? await publicConfiguration() : {};
-    const response = await request(`${jobPath}/buildWithParameters`, { method: 'POST', body: new URLSearchParams({ ...values, PROOF_GATE: gate, RUN_STRIDE_DATABASE: 'false', STRIDE_DB_HOST: '' }) });
+    const response = await request(`${jobPath}/buildWithParameters`, { method: 'POST', body: new URLSearchParams({ ...values, RUN_MODE: 'full', PROOF_GATE: gate, RUN_STRIDE_DATABASE: 'false', STRIDE_DB_HOST: '' }) });
     console.log(`Proof queued: ${response.headers.get('location') || 'check job queue'}`);
   } else if (command === 'automation-state') {
     const classic = await (await request('/job/reservasi-pipeline/config.xml')).text();
@@ -241,7 +268,7 @@ println('Main pipeline: ' + main.fullName)
   } else if (command === 'scan-report') {
     const number = process.argv[4];
     const category = process.argv[5];
-    if (!/^\d+$/.test(number || '') || !['audit', 'dast', 'secrets', 'sast', 'infra', 'image', 'ops'].includes(category)) throw new Error('Provide exact build and scan category.');
+    if (!/^\d+$/.test(number || '') || !['audit', 'dast', 'secrets', 'sast', 'infra', 'image', 'ops', 'pr'].includes(category)) throw new Error('Provide exact build and scan category.');
     const data = await (await request(`${jobPath}/${number}/artifact/reports/${category}/summary.json`)).json();
     writeFileSync(path.join(reportDir, `${job.replaceAll('/', '-')}-${number}-${category}.json`), JSON.stringify(data, null, 2) + '\n');
     console.log(JSON.stringify(data, null, 2));
@@ -259,7 +286,7 @@ println('Main pipeline: ' + main.fullName)
     const evidence = { job, ...build, stages };
     if (command === 'verify-proof') {
       const gate = process.argv[5];
-      if (!['secret', 'sast'].includes(gate)) throw new Error('Provide exact proof gate: secret or sast.');
+      if (!['secret', 'sast', 'owasp'].includes(gate)) throw new Error('Provide exact proof gate: secret, sast, or owasp.');
       const category = gate === 'secret' ? 'secrets' : 'sast';
       const scan = await (await request(`${jobPath}/${number}/artifact/reports/${category}/summary.json`)).json();
       const consoleText = await (await request(`${jobPath}/${number}/consoleText`)).text();
@@ -270,6 +297,11 @@ println('Main pipeline: ' + main.fullName)
         scannerExitOne: consoleText.includes('script returned exit code 1') };
       evidence.proof.verified = build.result === 'FAILURE' && !build.building && scan.status === 'blocked' && scan.exitCode === 1 &&
         scan.findings.length > 0 && evidence.proof.nextStageSkipped && evidence.proof.scannerExitOne;
+      if (gate === 'owasp') {
+        const mapping = await (await request(`${jobPath}/${number}/artifact/reports/sast/coverage.json`)).json();
+        evidence.proof.owaspCategoriesDetected = mapping.categories.filter((category) => category.findings > 0).length;
+        evidence.proof.verified = evidence.proof.verified && mapping.standard === 'OWASP Top 10:2025' && evidence.proof.owaspCategoriesDetected === 10;
+      }
       if (!evidence.proof.verified) process.exitCode = 1;
     }
     const destination = path.join(reportDir, `${job.replaceAll('/', '-')}-${number}.json`);

@@ -1,0 +1,379 @@
+# Project rules mapped to OWASP Top 10:2025. Each category is only partially covered.
+{
+  "rules": [
+    {
+      "id": "owasp2025-a01-browser-admin-api",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "message": "Privileged Auth admin API must not be used from browser source.",
+      "severity": "ERROR",
+      "metadata": {
+        "owasp": [
+          "A01:2025 - Broken Access Control"
+        ],
+        "cwe": [
+          "CWE-862"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security",
+        "scope": "Representative project checks; partial category coverage, not OWASP certification"
+      },
+      "patterns": [
+        {
+          "pattern": "$CLIENT.auth.admin.$METHOD(...)"
+        }
+      ],
+      "paths": {
+        "include": [
+          "/src/**"
+        ]
+      }
+    },
+    {
+      "id": "owasp2025-a02-disabled-tls",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "message": "TLS certificate verification must not be disabled.",
+      "severity": "ERROR",
+      "metadata": {
+        "owasp": [
+          "A02:2025 - Security Misconfiguration"
+        ],
+        "cwe": [
+          "CWE-295"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security",
+        "scope": "Representative project checks; partial category coverage, not OWASP certification"
+      },
+      "pattern-either": [
+        {
+          "pattern": "process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'"
+        },
+        {
+          "pattern": "$CLIENT({ ..., rejectUnauthorized: false, ... })"
+        }
+      ]
+    },
+    {
+      "id": "owasp2025-a03-untrusted-module",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "message": "Do not load modules selected by request data.",
+      "severity": "ERROR",
+      "metadata": {
+        "owasp": [
+          "A03:2025 - Software Supply Chain Failures"
+        ],
+        "cwe": [
+          "CWE-829"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security",
+        "scope": "Representative project checks; partial category coverage, not OWASP certification"
+      },
+      "pattern-either": [
+        {
+          "pattern": "require($REQ.query.$FIELD)"
+        },
+        {
+          "pattern": "import($REQ.query.$FIELD)"
+        },
+        {
+          "pattern": "require($REQ.body.$FIELD)"
+        }
+      ]
+    },
+    {
+      "id": "owasp2025-a04-weak-hash",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "message": "Review weak hashes; do not use MD5/SHA1 for security decisions.",
+      "severity": "ERROR",
+      "metadata": {
+        "owasp": [
+          "A04:2025 - Cryptographic Failures"
+        ],
+        "cwe": [
+          "CWE-328"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security",
+        "scope": "Representative project checks; partial category coverage, not OWASP certification"
+      },
+      "pattern-either": [
+        {
+          "pattern": "$CRYPTO.createHash('md5')"
+        },
+        {
+          "pattern": "$CRYPTO.createHash('sha1')"
+        }
+      ]
+    },
+    {
+      "id": "owasp2025-a05-dynamic-eval",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "message": "Dynamic evaluation of source is forbidden.",
+      "severity": "ERROR",
+      "metadata": {
+        "owasp": [
+          "A05:2025 - Injection"
+        ],
+        "cwe": [
+          "CWE-95"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security",
+        "scope": "Representative project checks; partial category coverage, not OWASP certification"
+      },
+      "pattern": "eval($INPUT)"
+    },
+    {
+      "id": "owasp2025-a05-request-to-shell",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "message": "Request data reaches a shell command.",
+      "severity": "ERROR",
+      "metadata": {
+        "owasp": [
+          "A05:2025 - Injection"
+        ],
+        "cwe": [
+          "CWE-78"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security",
+        "scope": "Representative project checks; partial category coverage, not OWASP certification"
+      },
+      "mode": "taint",
+      "pattern-sources": [
+        {
+          "pattern": "$REQ.query"
+        },
+        {
+          "pattern": "$REQ.body"
+        },
+        {
+          "pattern": "$REQ.params"
+        }
+      ],
+      "pattern-sinks": [
+        {
+          "pattern": "exec($COMMAND)"
+        },
+        {
+          "pattern": "$CP.exec($COMMAND)"
+        },
+        {
+          "pattern": "execSync($COMMAND)"
+        },
+        {
+          "pattern": "$CP.execSync($COMMAND)"
+        }
+      ]
+    },
+    {
+      "id": "owasp2025-a05-raw-html",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "message": "Dynamic HTML insertion needs a reviewed sanitization design.",
+      "severity": "ERROR",
+      "metadata": {
+        "owasp": [
+          "A05:2025 - Injection"
+        ],
+        "cwe": [
+          "CWE-79"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security",
+        "scope": "Representative project checks; partial category coverage, not OWASP certification"
+      },
+      "patterns": [
+        { "pattern": "$ELEMENT.innerHTML = $INPUT" },
+        { "pattern-not": "$ELEMENT.innerHTML = '...'" }
+      ]
+    },
+    {
+      "id": "owasp2025-a06-client-role-trust",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "message": "Do not make privileged authorization decisions from client-controlled role metadata.",
+      "severity": "ERROR",
+      "metadata": {
+        "owasp": [
+          "A06:2025 - Insecure Design"
+        ],
+        "cwe": [
+          "CWE-807"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security",
+        "scope": "Representative project checks; partial category coverage, not OWASP certification"
+      },
+      "pattern-either": [
+        {
+          "pattern": "if ($REQ.body.role === 'admin') { ... }"
+        },
+        {
+          "pattern": "if ($USER.user_metadata.role === 'admin') { ... }"
+        }
+      ]
+    },
+    {
+      "id": "owasp2025-a07-jwt-without-verification",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "message": "JWT decoding alone does not verify identity; expiration bypass requires review.",
+      "severity": "ERROR",
+      "metadata": {
+        "owasp": [
+          "A07:2025 - Authentication Failures"
+        ],
+        "cwe": [
+          "CWE-347"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security",
+        "scope": "Representative project checks; partial category coverage, not OWASP certification"
+      },
+      "pattern-either": [
+        {
+          "pattern": "$JWT.decode(...)"
+        },
+        {
+          "pattern": "$JWT.verify($TOKEN, $KEY, { ..., ignoreExpiration: true, ... })"
+        }
+      ]
+    },
+    {
+      "id": "owasp2025-a08-untrusted-deserialization",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "message": "Untrusted data reaches executable object deserialization.",
+      "severity": "ERROR",
+      "metadata": {
+        "owasp": [
+          "A08:2025 - Software or Data Integrity Failures"
+        ],
+        "cwe": [
+          "CWE-502"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security",
+        "scope": "Representative project checks; partial category coverage, not OWASP certification"
+      },
+      "mode": "taint",
+      "pattern-sources": [
+        {
+          "pattern": "$REQ.body"
+        },
+        {
+          "pattern": "$REQ.query"
+        }
+      ],
+      "pattern-sinks": [
+        {
+          "pattern": "$SERIALIZER.unserialize($VALUE)"
+        },
+        {
+          "pattern": "unserialize($VALUE)"
+        }
+      ]
+    },
+    {
+      "id": "owasp2025-a09-credential-logging",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "message": "Authentication secrets must not be written to logs.",
+      "severity": "ERROR",
+      "metadata": {
+        "owasp": [
+          "A09:2025 - Security Logging and Alerting Failures"
+        ],
+        "cwe": [
+          "CWE-532"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security",
+        "scope": "Representative project checks; partial category coverage, not OWASP certification"
+      },
+      "pattern-either": [
+        {
+          "pattern": "$LOGGER.$METHOD($REQ.headers.authorization)"
+        },
+        {
+          "pattern": "$LOGGER.$METHOD($REQ.body.password)"
+        },
+        {
+          "pattern": "$LOGGER.$METHOD($REQ.body.token)"
+        }
+      ]
+    },
+    {
+      "id": "owasp2025-a10-empty-catch",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "message": "Exceptions must not be silently discarded.",
+      "severity": "ERROR",
+      "metadata": {
+        "owasp": [
+          "A10:2025 - Mishandling of Exceptional Conditions"
+        ],
+        "cwe": [
+          "CWE-390"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security",
+        "scope": "Representative project checks; partial category coverage, not OWASP certification"
+      },
+      "pattern": "try { ... } catch ($ERROR) { }"
+    },
+    {
+      "id": "owasp2025-a10-fail-open",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "message": "A caught failure returning success can cause fail-open behavior.",
+      "severity": "ERROR",
+      "metadata": {
+        "owasp": [
+          "A10:2025 - Mishandling of Exceptional Conditions"
+        ],
+        "cwe": [
+          "CWE-636"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security",
+        "scope": "Representative project checks; partial category coverage, not OWASP certification"
+      },
+      "pattern": "try { ... } catch ($ERROR) { return true; }"
+    }
+  ]
+}

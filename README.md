@@ -1,5 +1,10 @@
 # Reservasi Ruangan Perpustakaan
 
+Pembaruan PR development + SAST OWASP 2025: [PR_OWASP_2025.md](PR_OWASP_2025.md).
+Mode PR memakai polling metadata GitHub dan memindai source PR sebagai data.
+Toolchain/Jenkinsfile dipin ke commit yang direview; pembaruan pin dilakukan admin.
+Laporan SAST HTML, mapping kategori, dan identitas merge tersedia di Artifacts Jenkins.
+
 Jenkins sehari-hari cukup **reservasi-pipeline** dengan `Jenkinsfile.dev` dari
 branch `ilyas`. `PROOF_GATE=none` menjalankan CI lengkap; `secret`/`sast` untuk uji
 fail-fast yang sengaja menghasilkan FAILURE. Job percobaan lama berada dalam

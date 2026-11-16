@@ -1,5 +1,12 @@
 # Status rubrik DevSecOps — 15 November 2026
 
+Pembaruan SAST/PR 16 November: [PR_OWASP_2025.md](PR_OWASP_2025.md). Semgrep CE
+dengan 13 aturan representatif memetakan sepuluh kategori OWASP Top 10:2025.
+Cakupan tiap kategori tetap parsial. Job utama disiapkan untuk polling PR ilyas
+ke development dengan source-only scanning; hasil aktif mengikuti artifact PR
+terbaru. Required checks/status GitHub tetap belum dikonfigurasi. Tabel di bawah
+menyimpan inventaris baseline sebelum pembaruan ini.
+
 Sumber: Rubrik_Penilaian_DevSecOps_YDP_2026.xlsx dari dosen. Ini inventaris bukti,
 bukan pemberian skor sendiri. Jumlah bobot baris 125%; heading dokumentasi 25%
 sedangkan tiga barisnya berjumlah 15%. Normalisasi perlu dikonfirmasi ke dosen.

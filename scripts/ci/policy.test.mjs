@@ -29,7 +29,7 @@ test('manual source-only checks remain available on the existing development bra
 });
 
 test('proof mode rejects unknown values, PRs, and database access', () => {
-  for (const proof of ['secret', 'sast']) {
+  for (const proof of ['secret', 'sast', 'owasp']) {
     assert.deepEqual(validatePipelinePolicy({ PROOF_GATE: proof }), { changeRequest: false, databaseRequested: false });
     assert.throws(() => validatePipelinePolicy({ PROOF_GATE: proof, CHANGE_ID: '8', CHANGE_TARGET: 'development' }));
     assert.throws(() => validatePipelinePolicy({ PROOF_GATE: proof, BRANCH_NAME: 'development', RUN_STRIDE_DATABASE: 'true' }));
