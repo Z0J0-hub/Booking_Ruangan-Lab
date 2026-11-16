@@ -1,5 +1,9 @@
 # Baseline CI dan pengujian keamanan
 
+Kelanjutan implementasi: [PR security CI dan DAST staging](CI_PR_DAST.md).
+Dokumen ini menyimpan baseline 12 November; daftar yang belum tersedia di bawah
+harus dibaca bersama status dan cakupan implementasi lanjutan tersebut.
+
 Proposal tetap menjadi dasar kebutuhan. Perubahan ini menyempurnakan CI, alat
 build, dan tes keamanan; tidak mengubah fitur, halaman, auth, atau schema.
 Baseline sebelum perubahan: branch `ilyas`, commit `80cfc92`.

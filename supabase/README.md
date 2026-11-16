@@ -43,12 +43,13 @@ Tidak ada akun admin atau data ruang contoh yang dibuat oleh SQL instalasi.
 
 Isi `.env` dengan `VITE_SUPABASE_URL` dan `VITE_SUPABASE_ANON_KEY` (anon key lama
 atau publishable key publik; bukan service_role/secret key). Di dashboard,
-atur **Authentication > URL Configuration**: gunakan `http://localhost:8080`
+atur **Authentication > URL Configuration**: gunakan `http://localhost:8081`
 sebagai Site URL dan tambahkan alamat tersebut ke Redirect URLs untuk Docker lokal.
 Tambahkan `http://localhost:5173` jika menjalankan Vite langsung. Untuk server
 production, gunakan alamat website sebenarnya.
 
-Jalankan `docker compose up -d --build`, lalu buka `http://localhost:8080`.
+Jalankan `docker compose up -d --build`, lalu buka `http://localhost:8081`.
+Port 8080 dipakai Jenkins; staging/prod container memakai loopback 8082/8083.
 Tanpa Docker, gunakan `npm ci` lalu `npm run dev` dan buka alamat Vite yang tampil.
 
 ## Perbedaan dengan migrasi lama

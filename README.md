@@ -1,5 +1,22 @@
 # Reservasi Ruangan Perpustakaan
 
+Pembaruan PR development + SAST OWASP 2025: [PR_OWASP_2025.md](PR_OWASP_2025.md).
+Mode PR memakai polling metadata GitHub dan memindai source PR sebagai data.
+Toolchain/Jenkinsfile dipin ke commit yang direview; pembaruan pin dilakukan admin.
+Laporan SAST HTML, mapping kategori, dan identitas merge tersedia di Artifacts Jenkins.
+
+Jenkins sehari-hari cukup **reservasi-pipeline** dengan `Jenkinsfile.dev` dari
+branch `ilyas`. `PROOF_GATE=none` menjalankan CI lengkap; `secret`/`sast` untuk uji
+fail-fast yang sengaja menghasilkan FAILURE. Job percobaan lama berada dalam
+folder arsip-reservasi dan nonaktif. Alur Git tetap ilyas -> PR development.
+
+Dokumen aktif: [arsitektur](ARCHITECTURE.md), [operasi dan demo rollback Windows](OPERATIONS.md),
+[status seluruh rubrik](RUBRIK_STATUS.md), serta [CI/PR/DAST](CI_PR_DAST.md).
+Untuk demo lokal terpantau: `npm.cmd run build` lalu `npm.cmd run ops:serve`.
+Drill terisolasi: `npm.cmd run ops:drill`.
+Panduan presentasi: [DEMO_CHECKLIST.md](DEMO_CHECKLIST.md); bahan paper:
+[PAPER_DRAFT.md](PAPER_DRAFT.md) (belum final).
+
 React + TypeScript + Vite dengan Supabase Auth dan PostgreSQL. Versi ini
 memulihkan aplikasi dari branch lokal `kirim-supabase`, sambil mempertahankan
 pipeline CI. Browser mengakses Supabase langsung; Express/MySQL di `backend/`

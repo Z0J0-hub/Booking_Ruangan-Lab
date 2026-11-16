@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject>
+  <description>PR/commit security CI. Enable only after assigning an isolated Windows agent with no database/deployment credentials. Local discovery polls every 15 minutes; no public tunnel required.</description>
+  <displayName>Reservasi PR Security</displayName>
+  <properties/>
+  <folderViews class="jenkins.branch.MultiBranchProjectViewHolder"><owner class="org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject" reference="../.."/></folderViews>
+  <healthMetrics/>
+  <icon class="jenkins.branch.MetadataActionFolderIcon"><owner class="org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject" reference="../.."/></icon>
+  <orphanedItemStrategy class="com.cloudbees.hudson.plugins.folder.computed.DefaultOrphanedItemStrategy"><pruneDeadBranches>true</pruneDeadBranches><daysToKeep>7</daysToKeep><numToKeep>10</numToKeep><abortBuilds>true</abortBuilds></orphanedItemStrategy>
+  <triggers><com.cloudbees.hudson.plugins.folder.computed.PeriodicFolderTrigger><spec>H H/4 * * *</spec><interval>900000</interval></com.cloudbees.hudson.plugins.folder.computed.PeriodicFolderTrigger></triggers>
+  <disabled>true</disabled>
+  <sources class="jenkins.branch.MultiBranchProject$BranchSourceList">
+    <data><jenkins.branch.BranchSource>
+      <source class="org.jenkinsci.plugins.github_branch_source.GitHubSCMSource">
+        <id>reservasi-origin-pr-security</id>
+        <apiUri>https://api.github.com</apiUri>
+        <credentialsId>__GITHUB_CREDENTIALS_ID__</credentialsId>
+        <repoOwner>Z0J0-hub</repoOwner><repository>Booking_Ruangan-Lab</repository>
+        <traits>
+          <org.jenkinsci.plugins.github_branch_source.BranchDiscoveryTrait><strategyId>3</strategyId></org.jenkinsci.plugins.github_branch_source.BranchDiscoveryTrait>
+          <org.jenkinsci.plugins.github_branch_source.OriginPullRequestDiscoveryTrait><strategyId>1</strategyId></org.jenkinsci.plugins.github_branch_source.OriginPullRequestDiscoveryTrait>
+          <jenkins.scm.impl.trait.RegexSCMHeadFilterTrait><regex>development|ilyas|PR-[0-9]+</regex></jenkins.scm.impl.trait.RegexSCMHeadFilterTrait>
+        </traits>
+      </source>
+      <strategy class="jenkins.branch.DefaultBranchPropertyStrategy"><properties class="empty-list"/></strategy>
+    </jenkins.branch.BranchSource></data>
+    <owner class="org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject" reference="../.."/>
+  </sources>
+  <factory class="org.jenkinsci.plugins.workflow.multibranch.WorkflowBranchProjectFactory"><owner class="org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject" reference="../.."/><scriptPath>Jenkinsfile.dev</scriptPath></factory>
+</org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject>

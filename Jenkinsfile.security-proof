@@ -1,0 +1,51 @@
+// Intentionally RED builds: the scanner must fail and the next stage must be skipped.
+// Historical template only. Active proofs use PROOF_GATE in Jenkinsfile.dev.
+// Old proof job/history is disabled under arsip-reservasi. Never require this template for PRs.
+pipeline {
+    agent any
+    options {
+        skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+        timestamps()
+        timeout(time: 10, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+    parameters {
+        choice(name: 'PROOF_GATE', choices: ['secret', 'sast'],
+            description: 'Synthetic finding: expected FAILURE at Enforce Gate; next stage skipped.')
+    }
+    stages {
+        stage('Checkout') { steps { checkout scm } }
+        stage('Prepare Proof') {
+            steps {
+                script { if (isUnix()) { error('Windows agent required.') } }
+                dir('reports') { deleteDir() }
+                bat 'call npm.cmd ci --no-audit --no-fund'
+                withEnv(["PROOF_GATE=${params.PROOF_GATE}"]) {
+                    bat 'node scripts/ci/proof-fixture.mjs %PROOF_GATE%'
+                }
+            }
+        }
+        stage('Enforce Gate') {
+            steps {
+                script {
+                    if (params.PROOF_GATE == 'secret') {
+                        bat 'call npm.cmd run ci:secrets'
+                    } else {
+                        bat 'call npm.cmd run ci:sast'
+                    }
+                }
+            }
+        }
+        stage('Must Be Skipped') {
+            steps { error('PROOF FAILED: pipeline continued after a security finding.') }
+        }
+    }
+    post {
+        always {
+            archiveArtifacts artifacts: 'reports/secrets/summary.*,reports/secrets/findings.json,reports/sast/summary.*,reports/sast/findings.json',
+                allowEmptyArchive: true, fingerprint: true
+            bat 'node scripts/ci/proof-fixture.mjs clean'
+        }
+    }
+}

@@ -9,7 +9,7 @@ function fixture(t, source, filename = 'fixture.tsx') {
   const root = mkdtempSync(path.join(os.tmpdir(), 'reservasi-sast-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   writeFileSync(path.join(root, filename), source);
-  return { root, files: [filename] };
+  return { root, files: [filename], semgrep: false };
 }
 
 test('real scanner rejects dynamic execution and raw JSX HTML, without publishing source', async (t) => {

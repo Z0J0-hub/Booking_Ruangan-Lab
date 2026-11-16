@@ -1,20 +1,21 @@
-# Run independently: docker compose -f docker-compose.prod.yml up -d --build
-# HTTP on port 80; configure HTTPS at an external reverse proxy if needed.
 name: library-booking-prod
-
 services:
   frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-      args:
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?Set VITE_SUPABASE_URL in .env}
-        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?Set VITE_SUPABASE_ANON_KEY in .env}
-    restart: always
-    ports:
-      - "80:80"
+    image: reservasi-frontend:${RELEASE_TAG:?Use an immutable scanned release tag}
+    user: "101:101"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=32m,mode=1777"]
+    pids_limit: 100
+    mem_limit: 128m
+    cpus: 0.5
+    restart: unless-stopped
+    ports: ["127.0.0.1:8083:8080"]
+    networks: [frontend]
     logging:
       driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
+      options: {max-size: "10m", max-file: "3"}
+networks:
+  frontend:
+    internal: true

@@ -1,0 +1,17 @@
+groups:
+  - name: reservasi
+    rules:
+      - alert: ReservasiCollectorDown
+        expr: up{job="reservasi-local"} == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations: {summary: "Local collector is unavailable"}
+      - alert: ReservasiFrontendDown
+        expr: reservasi_availability_down == 1
+        for: 10s
+        labels: {severity: critical}
+        annotations: {summary: "Frontend failed consecutive health probes"}
+      - alert: ReservasiSecurityEvent
+        expr: increase(reservasi_alerts_total[1m]) > 0
+        labels: {severity: warning}
+        annotations: {summary: "Inspect local security alerts.ndjson"}

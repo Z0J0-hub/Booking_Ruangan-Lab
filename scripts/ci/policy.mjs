@@ -4,11 +4,16 @@ import { pathToFileURL } from 'node:url';
 // PR source is untrusted, including same-repository PRs. Database credentials
 // belong only to the reviewed development branch, never to a change request.
 export function validatePipelinePolicy(env = process.env) {
-  const changeRequest = Boolean(env.CHANGE_ID) || /^PR-/i.test(env.BRANCH_NAME || '');
+  const changeRequest = env.CI_RUN_MODE === 'pr' || Boolean(env.CHANGE_ID) || /^PR-/i.test(env.BRANCH_NAME || '');
   if (changeRequest && env.CHANGE_TARGET !== 'development') {
     throw new Error('This pipeline accepts pull requests targeting development only.');
   }
   const databaseRequested = env.RUN_STRIDE_DATABASE === 'true';
+  const proof = env.PROOF_GATE || 'none';
+  if (!['none', 'secret', 'sast', 'owasp'].includes(proof)) throw new Error('Unknown fail-fast proof mode.');
+  if (proof !== 'none' && (changeRequest || databaseRequested)) {
+    throw new Error('Synthetic fail-fast proofs are manual source-only runs, without database tests or PR context.');
+  }
   if (databaseRequested && (changeRequest || env.BRANCH_NAME !== 'development')) {
     throw new Error('Database tests require the trusted development branch, not a PR or a classic job without branch identity.');
   }
