@@ -317,11 +317,8 @@ println('Main pipeline: ' + main.fullName)
       if (job === 'reservasi-pipeline' && gate === 'owasp' && build.result === 'SUCCESS') {
         const demo = await (await request(`${jobPath}/${number}/artifact/reports/sast/hasil-percobaan.json`)).json();
         evidence.proof = { gate, ...demo, verified: !build.building && demo.passed === true && demo.kind === 'contoh-bukan-aplikasi' && demo.detectedCategories === 10 };
-        writeFileSync(path.join(reportDir, `${job}-${number}.json`), JSON.stringify(evidence, null, 2) + '\n');
-        console.log(JSON.stringify(evidence, null, 2));
         if (!evidence.proof.verified) process.exitCode = 1;
-        process.exit(process.exitCode || 0);
-      }
+      } else {
       const category = gate === 'secret' ? 'secrets' : 'sast';
       const scan = await (await request(`${jobPath}/${number}/artifact/reports/${category}/summary.json`)).json();
       const consoleText = await (await request(`${jobPath}/${number}/consoleText`)).text();
@@ -338,6 +335,7 @@ println('Main pipeline: ' + main.fullName)
         evidence.proof.verified = evidence.proof.verified && mapping.standard === 'OWASP Top 10:2025' && evidence.proof.owaspCategoriesDetected === 10;
       }
       if (!evidence.proof.verified) process.exitCode = 1;
+      }
     }
     const destination = path.join(reportDir, `${job.replaceAll('/', '-')}-${number}.json`);
     writeFileSync(destination, JSON.stringify(evidence, null, 2) + '\n');
