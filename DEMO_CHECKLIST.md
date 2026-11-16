@@ -1,7 +1,8 @@
 # Urutan demo dan bukti penilaian
 
-Penggunaan sekarang: reservasi-pipeline, PILIH_PEMERIKSAAN. Pilih aplikasi untuk
-memeriksa kode asli pada nomor versi yang ditampilkan; pilih percobaan alat untuk
+Penggunaan sekarang: reservasi-pipeline, PILIH_PEMERIKSAAN. Pilih kode branch ilyas
+terbaru untuk mengambil source terbaru dari GitHub; versi yang benar-benar
+diperiksa ada pada keterangan build dan reports/source/summary.txt. Pilih percobaan alat untuk
 memeriksa contoh OWASP, bukan aplikasi. Percobaan berhasil (hijau) hanya jika
 semua contoh terdeteksi dan ditolak. Lihat [panduan](PR_OWASP_2025.md).
 Job lokal di tautan bukti lama sudah nonaktif di arsip-reservasi;

@@ -16,13 +16,13 @@ pipeline {
     parameters {
         choice(name: 'PILIH_PEMERIKSAAN', choices: [
             'Periksa PR menuju development',
-            'Periksa aplikasi: versi kode di bawah',
+            'Periksa kode branch ilyas terbaru',
             'Coba alat pendeteksi: contoh masalah OWASP'
-        ], description: "PR: periksa gabungan kode branch anggota dan development dari PR terbuka dalam repo yang sama; branch asal bebas. Aplikasi: periksa kode asli dari branch asal ilyas, versi ${scm.branches[0].name}; bukan otomatis kode terbaru development/main. Percobaan: hanya file contoh, bukan aplikasi; berhasil jika 10 kelompok contoh masalah terdeteksi. Memilih aplikasi juga menjalankan pemeriksaan lain, build, dan uji lokal; tidak deploy produksi.")
+        ], description: 'PR: periksa gabungan kode branch anggota dan development dari PR terbuka dalam repo yang sama. Branch ilyas terbaru: ambil kode terbaru yang sudah di-push ke ilyas saat tahap pengambilan kode; jalankan pemeriksaan, build, dan uji lokal. Perubahan yang belum di-push tidak ikut. Percobaan OWASP: hanya contoh masalah untuk mencoba alat, bukan aplikasi. Tidak deploy produksi.')
         string(name: 'NOMOR_PR', defaultValue: '', trim: true, description: 'Hanya untuk Periksa PR. Isi nomor PR terbuka yang tujuannya development, dari branch mana pun dalam repo yang sama; kosong = cari otomatis. PR ke main belum didukung.')
         booleanParam(name: 'PERIKSA_ULANG_PR', defaultValue: true, description: 'Hanya untuk Periksa PR manual: periksa lagi meskipun kodenya belum berubah. Jadwal otomatis hanya memeriksa perubahan baru.')
         string(name: 'SUPABASE_URL', defaultValue: params.SUPABASE_URL ?: env.CI_SUPABASE_URL ?: '', trim: true,
-            description: 'Pengaturan aplikasi tersimpan. Biarkan nilainya; hanya dipakai saat memilih Periksa aplikasi.')
+            description: 'Pengaturan aplikasi tersimpan. Biarkan nilainya; dipakai saat memeriksa kode branch ilyas terbaru.')
         string(name: 'SUPABASE_PUBLIC_KEY', defaultValue: params.SUPABASE_PUBLIC_KEY ?: env.CI_SUPABASE_PUBLIC_KEY ?: '', trim: true,
             description: 'Kunci publik aplikasi tersimpan. Biarkan nilainya; jangan isi password atau kunci rahasia.')
     }
@@ -40,7 +40,7 @@ pipeline {
                     if (isUnix()) { error('Jenkinsfile.dev requires a Windows agent.') }
                     def timer = !currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause').isEmpty()
                     def pilihan = params.PILIH_PEMERIKSAAN ?: 'Periksa PR menuju development'
-                    def modes = ['Periksa PR menuju development': 'pr', 'Periksa aplikasi: versi kode di bawah': 'full', 'Coba alat pendeteksi: contoh masalah OWASP': 'demo']
+                    def modes = ['Periksa PR menuju development': 'pr', 'Periksa kode branch ilyas terbaru': 'full', 'Coba alat pendeteksi: contoh masalah OWASP': 'demo']
                     if (!modes.containsKey(pilihan)) { error('Pilihan pemeriksaan tidak dikenal.') }
                     env.CI_RUN_MODE = timer ? 'pr' : modes[pilihan]
                     env.PROOF_GATE = env.CI_RUN_MODE == 'demo' ? 'owasp' : 'none'
@@ -71,11 +71,12 @@ pipeline {
                     def checked = checkout scm
                     env.GIT_COMMIT = checked.GIT_COMMIT
                     if (!(env.GIT_COMMIT ?: '').matches('[a-f0-9]{40}')) { error('Trusted checkout did not return an exact revision.') }
+                    env.PIPELINE_COMMIT = env.GIT_COMMIT
                     currentBuild.description = env.CI_RUN_MODE == 'pr' ? 'Cari PR menuju development (branch asal bebas dalam repo)' : env.CI_RUN_MODE == 'demo'
                         ? 'Percobaan alat: contoh OWASP, bukan aplikasi'
-                        : "Aplikasi asli: ilyas versi ${env.GIT_COMMIT.take(8)} (bukan otomatis versi terbaru branch)"
-                    echo "Kode aplikasi dan alat Jenkins: branch asal ilyas, versi ${env.GIT_COMMIT}."
-                    echo env.CI_RUN_MODE == 'pr' ? 'Kode yang diperiksa: gabungan branch asal PR dan development; nama branch, nomor PR, dan versi kode dicatat pada laporan PR.' : env.CI_RUN_MODE == 'demo' ? 'Yang diperiksa hanya contoh kode bermasalah; aplikasi tidak dibangun atau dijalankan.' : 'Yang diperiksa adalah aplikasi asli pada versi di atas; tidak ditambahkan contoh masalah OWASP.'
+                        : 'Mengambil kode branch ilyas terbaru dari GitHub'
+                    echo "Versi pengaturan pipeline Jenkins: ${env.PIPELINE_COMMIT}."
+                    echo env.CI_RUN_MODE == 'pr' ? 'Kode yang diperiksa: gabungan branch asal PR dan development; nama branch, nomor PR, dan versi kode dicatat pada laporan PR.' : env.CI_RUN_MODE == 'demo' ? 'Yang diperiksa hanya contoh kode bermasalah; aplikasi tidak dibangun atau dijalankan.' : 'Kode aplikasi akan diambil dari ujung branch ilyas terbaru, terpisah dari versi pengaturan pipeline.'
                 }
                 dir('reports') { deleteDir() }
                 bat 'node scripts/ci/proof-fixture.mjs clean'
@@ -88,6 +89,38 @@ pipeline {
                     if errorlevel 1 exit /b 1
                 '''
             }
+        }
+
+        stage('Ambil kode branch ilyas terbaru') {
+            when { expression { env.CI_RUN_MODE == 'full' } }
+            steps {
+                script {
+                    // Explicitly fetch the selected trusted team branch. The pipeline
+                    // definition remains pinned; PR mode never executes this checkout.
+                    def source = checkout([$class: 'GitSCM',
+                        branches: [[name: 'refs/remotes/origin/ilyas']],
+                        userRemoteConfigs: [[url: 'https://github.com/Z0J0-hub/Booking_Ruangan-Lab.git',
+                            refspec: '+refs/heads/ilyas:refs/remotes/origin/ilyas']],
+                        extensions: [[$class: 'CloneOption', shallow: false, noTags: true, honorRefspec: true]]])
+                    env.GIT_COMMIT = source.GIT_COMMIT
+                    if (!(env.GIT_COMMIT ?: '').matches('[a-f0-9]{40}')) { error('Tidak berhasil memastikan versi kode branch ilyas. Pemeriksaan dihentikan.') }
+                    def fetched = bat(returnStdout: true, script: '@echo off\ngit rev-parse refs/remotes/origin/ilyas').trim()
+                    if (fetched != env.GIT_COMMIT) { error('Kode yang diambil tidak sama dengan ujung branch ilyas. Pemeriksaan dihentikan.') }
+                    currentBuild.description = "Branch ilyas terbaru: ${env.GIT_COMMIT.take(8)}"
+                    echo "Kode yang diperiksa: branch ilyas, versi ${env.GIT_COMMIT}, dari GitHub saat pengambilan kode."
+                    writeFile file: 'reports/source/summary.json', text: """{
+  "mode": "latest-branch",
+  "repository": "Z0J0-hub/Booking_Ruangan-Lab",
+  "branch": "ilyas",
+  "commit": "${env.GIT_COMMIT}",
+  "pipelineCommit": "${env.PIPELINE_COMMIT}"
+}
+"""
+                    writeFile file: 'reports/source/summary.txt', text: "Kode yang diperiksa: branch ilyas terbaru saat pengambilan kode.\nVersi kode: ${env.GIT_COMMIT}\nVersi pengaturan pipeline: ${env.PIPELINE_COMMIT}\nPerubahan lokal yang belum di-push tidak ikut. Commit yang masuk setelah pengambilan kode ikut build berikutnya.\n"
+                }
+                bat 'node scripts/ci/proof-fixture.mjs clean'
+            }
+            post { always { archiveArtifacts artifacts: 'reports/source/*', allowEmptyArchive: true, fingerprint: true } }
         }
 
         stage('Cari PR menuju development') {

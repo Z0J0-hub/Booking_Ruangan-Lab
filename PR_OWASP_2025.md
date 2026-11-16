@@ -37,7 +37,7 @@ Di **Build with Parameters**, cukup isi **PILIH_PEMERIKSAAN**:
 | Pilihan | Kode yang diperiksa | Cara membaca hasil |
 |---|---|---|
 | Periksa PR menuju development | Gabungan kode branch asal PR dan development; PR harus masih terbuka dan kedua branch dalam repo yang sama | Hijau = tidak ada temuan dari aturan yang dipakai. Merah = ada temuan atau pemeriksaan error. |
-| Periksa aplikasi: versi kode di bawah | Aplikasi asli branch asal ilyas, pada nomor versi lengkap yang tertulis tepat di bawah pilihan | Tidak ditambahkan contoh kode bermasalah. Juga menjalankan pemeriksaan lain, build, DAST lokal dan latihan pemulihan. |
+| Periksa kode branch ilyas terbaru | Versi terbaru yang sudah di-push ke branch ilyas, diambil saat tahap pengambilan kode | Tidak ditambahkan contoh kode bermasalah. Tetap menjalankan pemeriksaan lain, build, DAST lokal dan latihan pemulihan. |
 | Coba alat pendeteksi: contoh masalah OWASP | Hanya satu file contoh sementara, bukan kode aplikasi | Hijau = semua 15 pola contoh dari 10 kelompok masalah terdeteksi dan ditolak. Merah = alat error atau ada contoh yang belum terdeteksi. |
 
 Untuk PR, isi **NOMOR_PR** atau kosongkan agar Jenkins mencari PR terbuka
@@ -53,11 +53,22 @@ Untuk pilihan aplikasi dan percobaan, abaikan dua kolom PR. Biarkan pengaturan
 Supabase tersimpan. Pilihan database tidak ditampilkan karena job ini tidak
 mendukung tes database yang memerlukan identitas branch development terpercaya.
 
-Pilihan aplikasi **tidak otomatis mengambil versi terbaru branch development
-atau main**. Nomor versi yang dipakai terlihat di deskripsi pilihan, keterangan
-build, dan Console Output. Untuk memeriksa perubahan baru dari branch anggota gunakan PR
-terbuka ke development. Admin memperbarui versi aplikasi/toolchain secara sadar
-menggunakan langkah pembaruan pin di bawah.
+Pilihan **Periksa kode branch ilyas terbaru** mengambil ujung branch ilyas dari
+GitHub pada setiap build, terpisah dari pin pengaturan pipeline. Tidak memerlukan
+PR terbuka. Perubahan lokal yang belum di-push tidak ikut. Jika ada push baru
+setelah tahap pengambilan kode, perubahan itu ikut build berikutnya.
+
+Lihat tahap **Ambil kode branch ilyas terbaru**, keterangan build, atau
+**Artifacts -> reports/source/summary.txt** untuk nomor versi kode yang diperiksa.
+`summary.json` di folder yang sama mencatat `branch`, `commit` kode aplikasi,
+dan `pipelineCommit` (versi pengaturan pipeline). Kegagalan mengambil branch
+menghentikan build, bukan memeriksa salinan lama lalu menyebutnya terbaru.
+
+Mode ini menjalankan dependency, skrip pemeriksaan, tes dan build dari branch
+ilyas yang dipilih sebagai branch terpercaya. Karena itu perubahan skrip/rules
+di branch tersebut juga berlaku pada build branch berikutnya. Mode PR tetap
+membaca source sebagai data dan tidak mengeksekusi skrip dari PR.
+Branch development/main belum menjadi pilihan pemeriksaan branch.
 
 Pada percobaan, laporan `reports/sast/summary.html` menjelaskan hasil dalam
 bahasa Indonesia; `hasil-percobaan.json` mencatat apakah semua contoh terdeteksi.
@@ -105,7 +116,10 @@ node scripts/jenkins/control.mjs build-validation reservasi-pipeline
 ```
 
 Perubahan aplikasi biasa dalam PR otomatis dipindai tanpa mengganti pin scanner.
-Full/manual build memakai source pada pin tersebut sampai diperbarui dengan sengaja.
+Mode PR dan percobaan memakai alat pada pin tersebut; mode branch mengambil
+source terbaru ilyas setelah memuat definisi pipeline dari pin. Perubahan aplikasi
+biasa pada ilyas tidak memerlukan pembaruan pin. Pembaruan Jenkinsfile.dev sendiri
+memerlukan langkah aktivasi di atas agar definisi pipeline yang dijalankan ikut berubah.
 Tidak ada branch baru; pin merujuk commit yang berasal dari ilyas.
 
 ## Cakupan OWASP terbaru
