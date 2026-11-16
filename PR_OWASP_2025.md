@@ -85,23 +85,23 @@ scripts/sast/requirements.lock. Tidak mengambil rule registry yang berubah setia
 | Kategori 2025 | Contoh pemeriksaan terpilih | Batas penting |
 |---|---|---|
 | A01 Broken Access Control | Pemakaian Auth admin API pada source browser | Tidak membuktikan policy RLS/otorisasi server benar |
-| A02 Security Misconfiguration | TLS verification dinonaktifkan | Tidak mencakup seluruh konfigurasi cloud |
-| A03 Software Supply Chain Failures | Module dipilih dari request | Bukan pengganti audit dependency, provenance, signing |
+| A02 Security Misconfiguration | CORS merefleksikan origin bebas sambil mengizinkan credentials (CWE-942) | Tidak mencakup seluruh konfigurasi cloud |
+| A03 Software Supply Chain Failures | Pemakaian API Buffer constructor yang obsolete (CWE-477) | Bukan pengganti audit dependency, provenance, signing |
 | A04 Cryptographic Failures | MD5/SHA1 melalui createHash | Konteks penggunaan perlu review; bukan audit kriptografi penuh |
 | A05 Injection | eval, request -> shell (taint intrafile), innerHTML dinamis | Tidak semua SQL/XSS atau alur lintas file |
 | A06 Insecure Design | Keputusan privileged dari body/user_metadata role | Desain bisnis tetap perlu threat modeling/manual review |
-| A07 Authentication Failures | decode JWT tanpa verifikasi, expiration bypass | Tidak membuktikan login/session Supabase aman |
-| A08 Software or Data Integrity Failures | Request -> unserialize | Bukan audit update pipeline/integritas seluruh data |
+| A07 Authentication Failures | decode JWT tanpa langkah verifikasi, expiration bypass, TLS verification dinonaktifkan | Tidak membuktikan login/session Supabase aman |
+| A08 Software or Data Integrity Failures | Request -> unserialize atau module dari input tidak terpercaya | Bukan audit update pipeline/integritas seluruh data |
 | A09 Security Logging and Alerting Failures | Logging password/token/header autentikasi | Tidak membuktikan log/alert wajib sudah lengkap |
 | A10 Mishandling of Exceptional Conditions | Catch kosong dan fail-open return true | Tidak semua resource exhaustion/error handling |
 
-**Semua kategori berstatus cakupan parsial.** 13 aturan mewakili pola konkret,
+**Semua kategori berstatus cakupan parsial.** 15 aturan mewakili pola konkret,
 bukan sertifikasi atau deteksi penuh Top 10. Temuan adalah pola yang memerlukan
 review; false positive perlu diperiksa dalam konteks, bukan dibypass diam-diam.
 Rule ambigu seperti MD5 untuk cache nonkeamanan bisa memerlukan penyesuaian yang
 direview. Jangan menonaktifkan gate hanya agar build hijau.
 
-Tes nyata menjalankan Semgrep pada fixture positif untuk ke-13 aturan, memeriksa
+Tes nyata menjalankan Semgrep pada fixture positif untuk ke-15 aturan, memeriksa
 10 kategori muncul, lalu menjalankan kontrol negatif yang harus lolos. File fixture
 ada di security/semgrep/fixtures/ dan tidak dieksekusi/dideploy. ESLint tetap
 dipertahankan sebagai pemeriksaan pelengkap. Hasil nol temuan berarti aturan

@@ -32,7 +32,7 @@
       }
     },
     {
-      "id": "owasp2025-a02-disabled-tls",
+      "id": "owasp2025-a07-disabled-tls",
       "languages": [
         "javascript",
         "typescript"
@@ -41,7 +41,7 @@
       "severity": "ERROR",
       "metadata": {
         "owasp": [
-          "A02:2025 - Security Misconfiguration"
+          "A07:2025 - Authentication Failures"
         ],
         "cwe": [
           "CWE-295"
@@ -60,7 +60,7 @@
       ]
     },
     {
-      "id": "owasp2025-a03-untrusted-module",
+      "id": "owasp2025-a08-untrusted-module",
       "languages": [
         "javascript",
         "typescript"
@@ -69,7 +69,7 @@
       "severity": "ERROR",
       "metadata": {
         "owasp": [
-          "A03:2025 - Software Supply Chain Failures"
+          "A08:2025 - Software or Data Integrity Failures"
         ],
         "cwe": [
           "CWE-829"
@@ -205,8 +205,12 @@
         "scope": "Representative project checks; partial category coverage, not OWASP certification"
       },
       "patterns": [
-        { "pattern": "$ELEMENT.innerHTML = $INPUT" },
-        { "pattern-not": "$ELEMENT.innerHTML = '...'" }
+        {
+          "pattern": "$ELEMENT.innerHTML = $INPUT"
+        },
+        {
+          "pattern-not": "$ELEMENT.innerHTML = '...'"
+        }
       ]
     },
     {
@@ -250,7 +254,8 @@
           "A07:2025 - Authentication Failures"
         ],
         "cwe": [
-          "CWE-347"
+          "CWE-304",
+          "CWE-613"
         ],
         "confidence": "MEDIUM",
         "category": "security",
@@ -374,6 +379,53 @@
         "scope": "Representative project checks; partial category coverage, not OWASP certification"
       },
       "pattern": "try { ... } catch ($ERROR) { return true; }"
+    },
+    {
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "severity": "ERROR",
+      "id": "owasp2025-a02-reflective-credential-cors",
+      "message": "Reflecting arbitrary CORS origins with credentials requires a reviewed allowlist.",
+      "metadata": {
+        "owasp": [
+          "A02:2025 - Security Misconfiguration"
+        ],
+        "cwe": [
+          "CWE-942"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security"
+      },
+      "pattern": "$CORS({ ..., origin: true, credentials: true, ... })"
+    },
+    {
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "severity": "ERROR",
+      "id": "owasp2025-a03-obsolete-buffer",
+      "message": "Deprecated Buffer constructors are obsolete APIs; use Buffer.from/alloc with reviewed sizes.",
+      "metadata": {
+        "owasp": [
+          "A03:2025 - Software Supply Chain Failures"
+        ],
+        "cwe": [
+          "CWE-477"
+        ],
+        "confidence": "MEDIUM",
+        "category": "security"
+      },
+      "pattern-either": [
+        {
+          "pattern": "new Buffer(...)"
+        },
+        {
+          "pattern": "Buffer(...)"
+        }
+      ]
     }
   ]
 }
