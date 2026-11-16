@@ -7,10 +7,12 @@ Laporan SAST HTML, mapping kategori, dan identitas merge tersedia di Artifacts J
 
 Jenkins sehari-hari cukup **reservasi-pipeline** dengan `Jenkinsfile.dev` dari
 branch asal `ilyas`, pada versi yang ditampilkan di form. **PILIH_PEMERIKSAAN**
-menawarkan pemeriksaan PR ilyas -> development, aplikasi asli pada versi tersebut,
+menawarkan pemeriksaan PR dari branch mana pun dalam repo tim menuju development,
+aplikasi asli pada versi tersebut,
 atau percobaan alat memakai contoh OWASP (bukan aplikasi). Percobaan hijau berarti
 contoh bermasalah berhasil ditolak. Job percobaan lama berada dalam
-folder arsip-reservasi dan nonaktif. Alur Git tetap ilyas -> PR development.
+folder arsip-reservasi dan nonaktif. Anggota kelompok dapat mengajukan PR dari
+branch masing-masing menuju development.
 
 Dokumen aktif: [arsitektur](ARCHITECTURE.md), [operasi dan demo rollback Windows](OPERATIONS.md),
 [status seluruh rubrik](RUBRIK_STATUS.md), serta [CI/PR/DAST](CI_PR_DAST.md).

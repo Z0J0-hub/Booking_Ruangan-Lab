@@ -9,17 +9,17 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10'))
     }
 
-    // Local Jenkins polls GitHub PR metadata; only changed ilyas -> development PRs are scanned.
+    // Poll changed PRs into development from any branch in the same repository.
     // The controller pins this pipeline/tooling to a reviewed commit; PR source is data only.
     triggers { cron('H/5 * * * *') }
 
     parameters {
         choice(name: 'PILIH_PEMERIKSAAN', choices: [
-            'Periksa PR: ilyas -> development',
+            'Periksa PR menuju development',
             'Periksa aplikasi: versi kode di bawah',
             'Coba alat pendeteksi: contoh masalah OWASP'
-        ], description: "PR: periksa gabungan kode ilyas dan development dari PR terbuka. Aplikasi: periksa kode asli dari branch asal ilyas, versi ${scm.branches[0].name}; bukan otomatis kode terbaru development/main. Percobaan: hanya file contoh, bukan aplikasi; berhasil jika 10 kelompok contoh masalah terdeteksi. Memilih aplikasi juga menjalankan pemeriksaan lain, build, dan uji lokal; tidak deploy produksi.")
-        string(name: 'NOMOR_PR', defaultValue: '', trim: true, description: 'Hanya untuk pilihan Periksa PR. Isi nomor PR ilyas -> development yang masih terbuka; kosong = cari otomatis. PR ke main belum didukung.')
+        ], description: "PR: periksa gabungan kode branch anggota dan development dari PR terbuka dalam repo yang sama; branch asal bebas. Aplikasi: periksa kode asli dari branch asal ilyas, versi ${scm.branches[0].name}; bukan otomatis kode terbaru development/main. Percobaan: hanya file contoh, bukan aplikasi; berhasil jika 10 kelompok contoh masalah terdeteksi. Memilih aplikasi juga menjalankan pemeriksaan lain, build, dan uji lokal; tidak deploy produksi.")
+        string(name: 'NOMOR_PR', defaultValue: '', trim: true, description: 'Hanya untuk Periksa PR. Isi nomor PR terbuka yang tujuannya development, dari branch mana pun dalam repo yang sama; kosong = cari otomatis. PR ke main belum didukung.')
         booleanParam(name: 'PERIKSA_ULANG_PR', defaultValue: true, description: 'Hanya untuk Periksa PR manual: periksa lagi meskipun kodenya belum berubah. Jadwal otomatis hanya memeriksa perubahan baru.')
         string(name: 'SUPABASE_URL', defaultValue: params.SUPABASE_URL ?: env.CI_SUPABASE_URL ?: '', trim: true,
             description: 'Pengaturan aplikasi tersimpan. Biarkan nilainya; hanya dipakai saat memilih Periksa aplikasi.')
@@ -39,8 +39,8 @@ pipeline {
                 script {
                     if (isUnix()) { error('Jenkinsfile.dev requires a Windows agent.') }
                     def timer = !currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause').isEmpty()
-                    def pilihan = params.PILIH_PEMERIKSAAN ?: 'Periksa PR: ilyas -> development'
-                    def modes = ['Periksa PR: ilyas -> development': 'pr', 'Periksa aplikasi: versi kode di bawah': 'full', 'Coba alat pendeteksi: contoh masalah OWASP': 'demo']
+                    def pilihan = params.PILIH_PEMERIKSAAN ?: 'Periksa PR menuju development'
+                    def modes = ['Periksa PR menuju development': 'pr', 'Periksa aplikasi: versi kode di bawah': 'full', 'Coba alat pendeteksi: contoh masalah OWASP': 'demo']
                     if (!modes.containsKey(pilihan)) { error('Pilihan pemeriksaan tidak dikenal.') }
                     env.CI_RUN_MODE = timer ? 'pr' : modes[pilihan]
                     env.PROOF_GATE = env.CI_RUN_MODE == 'demo' ? 'owasp' : 'none'
@@ -71,11 +71,11 @@ pipeline {
                     def checked = checkout scm
                     env.GIT_COMMIT = checked.GIT_COMMIT
                     if (!(env.GIT_COMMIT ?: '').matches('[a-f0-9]{40}')) { error('Trusted checkout did not return an exact revision.') }
-                    currentBuild.description = env.CI_RUN_MODE == 'pr' ? 'Cari PR ilyas -> development' : env.CI_RUN_MODE == 'demo'
+                    currentBuild.description = env.CI_RUN_MODE == 'pr' ? 'Cari PR menuju development (branch asal bebas dalam repo)' : env.CI_RUN_MODE == 'demo'
                         ? 'Percobaan alat: contoh OWASP, bukan aplikasi'
                         : "Aplikasi asli: ilyas versi ${env.GIT_COMMIT.take(8)} (bukan otomatis versi terbaru branch)"
                     echo "Kode aplikasi dan alat Jenkins: branch asal ilyas, versi ${env.GIT_COMMIT}."
-                    echo env.CI_RUN_MODE == 'pr' ? 'Kode yang diperiksa: gabungan PR ilyas -> development; detail akan dicatat pada laporan PR.' : env.CI_RUN_MODE == 'demo' ? 'Yang diperiksa hanya contoh kode bermasalah; aplikasi tidak dibangun atau dijalankan.' : 'Yang diperiksa adalah aplikasi asli pada versi di atas; tidak ditambahkan contoh masalah OWASP.'
+                    echo env.CI_RUN_MODE == 'pr' ? 'Kode yang diperiksa: gabungan branch asal PR dan development; nama branch, nomor PR, dan versi kode dicatat pada laporan PR.' : env.CI_RUN_MODE == 'demo' ? 'Yang diperiksa hanya contoh kode bermasalah; aplikasi tidak dibangun atau dijalankan.' : 'Yang diperiksa adalah aplikasi asli pada versi di atas; tidak ditambahkan contoh masalah OWASP.'
                 }
                 dir('reports') { deleteDir() }
                 bat 'node scripts/ci/proof-fixture.mjs clean'
@@ -90,7 +90,7 @@ pipeline {
             }
         }
 
-        stage('Cari PR ilyas ke development') {
+        stage('Cari PR menuju development') {
             when { expression { env.CI_RUN_MODE == 'pr' } }
             steps {
                 script {
@@ -98,7 +98,7 @@ pipeline {
                     if (code == 3) {
                         currentBuild.result = 'NOT_BUILT'
                     } else if (code != 0) {
-                        error('Tidak bisa memeriksa PR. Pastikan nomor PR benar, masih terbuka, dan arahnya ilyas -> development. Lihat reports/pr/plan.json untuk rincian.')
+                        error('Tidak bisa memeriksa PR. Pastikan nomor PR benar, masih terbuka, tujuannya development, dan branch asal berada dalam repo yang sama. Lihat reports/pr/plan.json untuk rincian.')
                     } else { env.PR_SCAN_REQUIRED = 'true' }
                     currentBuild.description = bat(returnStdout: true, script: '@echo off\nnode scripts/pr/plan.mjs --describe').trim()
                 }

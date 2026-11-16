@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, copyFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { projectRoot, planFile, repository, github, validatePr, scanKey } from './plan.mjs';
+import { projectRoot, planFile, repository, github, validatePr, validSourceBranch, scanKey } from './plan.mjs';
 import { runSast } from '../ci/sast.mjs';
 
 export function validateSourcePath(name) {
@@ -20,10 +20,10 @@ export async function scanPr() {
   const scratch = mkdtempSync(path.join(directory, 'private-source-'));
   try {
     const plan = JSON.parse(readFileSync(planFile, 'utf8'));
-    if (plan.status !== 'ready' || plan.target !== 'development' || plan.source !== 'ilyas' ||
+    if (plan.status !== 'ready' || plan.target !== 'development' || !validSourceBranch(plan.source) ||
         !/^[a-f0-9]{40}$/.test(plan.head) || !/^[a-f0-9]{40}$/.test(plan.base) || !Number.isInteger(plan.number) || plan.number < 1 ||
         plan.scannerRevision !== process.env.GIT_COMMIT || plan.key !== scanKey(plan, plan.scannerRevision)) throw new Error('INVALID_PR_PLAN');
-    Object.assign(report, { number: plan.number, url: plan.url, head: plan.head, base: plan.base, scannerRevision: plan.scannerRevision });
+    Object.assign(report, { number: plan.number, url: plan.url, source: plan.source, target: plan.target, head: plan.head, base: plan.base, scannerRevision: plan.scannerRevision });
     const store = path.join(projectRoot, '.runtime', 'pr', 'source.git'); mkdirSync(store, { recursive: true });
     const noHooks = path.join(projectRoot, '.runtime', 'pr', 'no-hooks'); mkdirSync(noHooks, { recursive: true });
     const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
@@ -61,7 +61,7 @@ export async function scanPr() {
     if (!count) throw new Error('EMPTY_PR_SOURCE');
     const scan = await runSast({ root: source });
     const latest = validatePr(await github(`/pulls/${plan.number}`));
-    if (latest.head !== plan.head || latest.base !== plan.base) throw new Error('PR_CHANGED_DURING_SCAN');
+    if (latest.head !== plan.head || latest.base !== plan.base || latest.source !== plan.source) throw new Error('PR_CHANGED_DURING_SCAN');
     const destination = path.join(projectRoot, 'reports', 'sast'); mkdirSync(destination, { recursive: true });
     for (const name of ['summary.json', 'summary.txt', 'summary.html', 'findings.json', 'coverage.json', 'semgrep.json']) {
       copyFileSync(path.join(source, 'reports', 'sast', name), path.join(destination, name));

@@ -3,8 +3,9 @@
 ## Tempat memeriksa
 
 Semua tetap dalam [reservasi-pipeline](http://localhost:8080/job/reservasi-pipeline/).
-Sumber PR yang diterima: **ilyas -> development**, repository tim yang sama.
-PR ke main, branch sumber lain, dan fork tidak dipindai otomatis oleh konfigurasi ini.
+Sumber PR yang diterima: **branch mana pun -> development**, repository tim yang sama.
+Contoh: `ilyas`, `fitur/login`, atau `perbaikan-booking` -> `development`.
+PR ke main dan PR dari fork/repo lain tidak dipindai oleh konfigurasi ini.
 
 Jenkins memeriksa GitHub setiap sekitar 5 menit, tanpa public tunnel/webhook.
 PR baru, perubahan head, perubahan base development, atau pembaruan scanner yang
@@ -17,7 +18,7 @@ di .runtime/pr/completed.json berdasarkan head + base + revisi scanner.
 Pada build PR, periksa:
 
 1. Description: nomor PR dan head commit.
-2. **Cari PR ilyas ke development**: pemilihan PR yang masih terbuka.
+2. **Cari PR menuju development**: pemilihan PR yang masih terbuka dari branch mana pun dalam repo.
 3. **SAST**: Semgrep CE 1.185.0 dan ESLint security.
 4. **Artifacts**: reports/pr/plan.json dan summary.json menyebut nomor PR,
    head/base, merge commit yang diuji, dan revisi scanner.
@@ -35,13 +36,17 @@ Di **Build with Parameters**, cukup isi **PILIH_PEMERIKSAAN**:
 
 | Pilihan | Kode yang diperiksa | Cara membaca hasil |
 |---|---|---|
-| Periksa PR: ilyas -> development | Gabungan kode PR dari ilyas dan development; PR harus masih terbuka | Hijau = tidak ada temuan dari aturan yang dipakai. Merah = ada temuan atau pemeriksaan error. |
+| Periksa PR menuju development | Gabungan kode branch asal PR dan development; PR harus masih terbuka dan kedua branch dalam repo yang sama | Hijau = tidak ada temuan dari aturan yang dipakai. Merah = ada temuan atau pemeriksaan error. |
 | Periksa aplikasi: versi kode di bawah | Aplikasi asli branch asal ilyas, pada nomor versi lengkap yang tertulis tepat di bawah pilihan | Tidak ditambahkan contoh kode bermasalah. Juga menjalankan pemeriksaan lain, build, DAST lokal dan latihan pemulihan. |
 | Coba alat pendeteksi: contoh masalah OWASP | Hanya satu file contoh sementara, bukan kode aplikasi | Hijau = semua 15 pola contoh dari 10 kelompok masalah terdeteksi dan ditolak. Merah = alat error atau ada contoh yang belum terdeteksi. |
 
 Untuk PR, isi **NOMOR_PR** atau kosongkan agar Jenkins mencari PR terbuka
-`ilyas -> development`. **PERIKSA_ULANG_PR** memaksa pemeriksaan manual ulang;
-jadwal otomatis tetap hanya memeriksa perubahan baru. Jika tidak ada PR terbuka,
+menuju `development` dari branch mana pun dalam repo tim. **PERIKSA_ULANG_PR** memaksa pemeriksaan manual ulang;
+jadwal otomatis tetap hanya memeriksa perubahan baru. Bila ada beberapa PR, Jenkins
+memeriksa satu PR yang belum diperiksa per jadwal; PR lainnya menyusul pada jadwal
+berikutnya. Daftar PR dibaca per halaman agar tidak terbatas pada 100 PR pertama.
+Nama branch asal dicatat sesuai PR sebenarnya pada keterangan build dan laporan.
+Jika tidak ada PR terbuka,
 hasil abu-abu berarti tidak ada kode PR yang diperiksa, bukan pemeriksaan lolos.
 
 Untuk pilihan aplikasi dan percobaan, abaikan dua kolom PR. Biarkan pengaturan
@@ -50,7 +55,7 @@ mendukung tes database yang memerlukan identitas branch development terpercaya.
 
 Pilihan aplikasi **tidak otomatis mengambil versi terbaru branch development
 atau main**. Nomor versi yang dipakai terlihat di deskripsi pilihan, keterangan
-build, dan Console Output. Untuk memeriksa perubahan baru dari ilyas gunakan PR
+build, dan Console Output. Untuk memeriksa perubahan baru dari branch anggota gunakan PR
 terbuka ke development. Admin memperbarui versi aplikasi/toolchain secara sadar
 menggunakan langkah pembaruan pin di bawah.
 
