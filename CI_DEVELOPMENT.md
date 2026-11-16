@@ -1,8 +1,12 @@
 # CI Development - Supabase
 
 Sejak konsolidasi 16 November, semua pemeriksaan Windows dan proof fail-fast
-dijalankan dari reservasi-pipeline / Jenkinsfile.dev. Pilih PROOF_GATE=none untuk
-build biasa. Job percobaan lama dipindahkan ke folder arsip-reservasi nonaktif.
+dijalankan dari reservasi-pipeline / Jenkinsfile.dev. Form build terbaru memakai
+PILIH_PEMERIKSAAN, bukan RUN_MODE/PROOF_GATE. Ikuti [panduan form terbaru](PR_OWASP_2025.md)
+untuk pilihan kode PR, versi aplikasi, dan percobaan alat. Konfigurasi branch dinamis,
+parameter database dan contoh FAILURE di bawah adalah catatan konfigurasi lama;
+job aktif menggunakan pin versi yang terlihat di form. Job percobaan lama dipindahkan
+ke folder arsip-reservasi nonaktif.
 
 Pengembangan PR otomatis, job bukti fail-fast, dan tahap DAST setelah build
 dijelaskan pada [CI_PR_DAST.md](CI_PR_DAST.md). Catatan validasi lama di bawah

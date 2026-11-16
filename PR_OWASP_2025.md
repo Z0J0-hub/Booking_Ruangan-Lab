@@ -17,7 +17,7 @@ di .runtime/pr/completed.json berdasarkan head + base + revisi scanner.
 Pada build PR, periksa:
 
 1. Description: nomor PR dan head commit.
-2. **Discover Development PR**: pemilihan PR eligible.
+2. **Cari PR ilyas ke development**: pemilihan PR yang masih terbuka.
 3. **SAST**: Semgrep CE 1.185.0 dan ESLint security.
 4. **Artifacts**: reports/pr/plan.json dan summary.json menyebut nomor PR,
    head/base, merge commit yang diuji, dan revisi scanner.
@@ -31,15 +31,38 @@ otomatis diblokir oleh GitHub. PR tidak di-merge oleh proses ini.
 
 ## Pemakaian manual
 
-Build with Parameters:
+Di **Build with Parameters**, cukup isi **PILIH_PEMERIKSAAN**:
 
-- **RUN_MODE=pr**: cari PR eligible; PR_NUMBER opsional untuk nomor tertentu.
-  PR_FORCE_RESCAN=true memaksa ulang. PROOF_GATE=none, database=false.
-- **RUN_MODE=full**, PROOF_GATE=none: CI lengkap untuk revisi source/toolchain
-  yang telah disetujui (scan infra, SCA/secrets, build, DAST, dan operasi).
-- **RUN_MODE=full**, PROOF_GATE=owasp: fixture sintetis memicu pemeriksaan
-  representatif seluruh 10 kategori; build FAILURE memang diharapkan di SAST.
-  Lihat coverage.json: tiap kategori memiliki findings > 0. Fixture dibersihkan.
+| Pilihan | Kode yang diperiksa | Cara membaca hasil |
+|---|---|---|
+| Periksa PR: ilyas -> development | Gabungan kode PR dari ilyas dan development; PR harus masih terbuka | Hijau = tidak ada temuan dari aturan yang dipakai. Merah = ada temuan atau pemeriksaan error. |
+| Periksa aplikasi: versi kode di bawah | Aplikasi asli branch asal ilyas, pada nomor versi lengkap yang tertulis tepat di bawah pilihan | Tidak ditambahkan contoh kode bermasalah. Juga menjalankan pemeriksaan lain, build, DAST lokal dan latihan pemulihan. |
+| Coba alat pendeteksi: contoh masalah OWASP | Hanya satu file contoh sementara, bukan kode aplikasi | Hijau = semua 15 pola contoh dari 10 kelompok masalah terdeteksi dan ditolak. Merah = alat error atau ada contoh yang belum terdeteksi. |
+
+Untuk PR, isi **NOMOR_PR** atau kosongkan agar Jenkins mencari PR terbuka
+`ilyas -> development`. **PERIKSA_ULANG_PR** memaksa pemeriksaan manual ulang;
+jadwal otomatis tetap hanya memeriksa perubahan baru. Jika tidak ada PR terbuka,
+hasil abu-abu berarti tidak ada kode PR yang diperiksa, bukan pemeriksaan lolos.
+
+Untuk pilihan aplikasi dan percobaan, abaikan dua kolom PR. Biarkan pengaturan
+Supabase tersimpan. Pilihan database tidak ditampilkan karena job ini tidak
+mendukung tes database yang memerlukan identitas branch development terpercaya.
+
+Pilihan aplikasi **tidak otomatis mengambil versi terbaru branch development
+atau main**. Nomor versi yang dipakai terlihat di deskripsi pilihan, keterangan
+build, dan Console Output. Untuk memeriksa perubahan baru dari ilyas gunakan PR
+terbuka ke development. Admin memperbarui versi aplikasi/toolchain secara sadar
+menggunakan langkah pembaruan pin di bawah.
+
+Pada percobaan, laporan `reports/sast/summary.html` menjelaskan hasil dalam
+bahasa Indonesia; `hasil-percobaan.json` mencatat apakah semua contoh terdeteksi.
+Laporan teknis `summary.json` tetap menyebut `blocked` jika contoh berhasil
+ditolak. Build hijau berarti **tes alat berhasil**, bukan aplikasi bebas masalah.
+File contoh tidak dijalankan atau dibangun menjadi aplikasi, lalu dibersihkan.
+
+Nama lama `RUN_MODE=full` dan `PROOF_GATE` tidak lagi ditampilkan di form.
+Build lama #33 tetap merah karena saat itu penolakan contoh sengaja diteruskan
+sebagai kegagalan build; percobaan baru menilai hasil penolakan tersebut.
 
 Mode PR hanya menguji source merge dengan scanner terpercaya. Tidak menjalankan
 package.json scripts, npm install, Jenkinsfile, auth/database, build, atau DAST
@@ -72,6 +95,7 @@ admin memperbarui pin secara eksplisit dari workspace bersih:
 
 ```powershell
 node scripts/jenkins/control.mjs activate-pr reservasi-pipeline <SHA-commit-disetujui>
+node scripts/jenkins/control.mjs update-build-form reservasi-pipeline
 node scripts/jenkins/control.mjs build-validation reservasi-pipeline
 ```
 

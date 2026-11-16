@@ -6,8 +6,10 @@ Toolchain/Jenkinsfile dipin ke commit yang direview; pembaruan pin dilakukan adm
 Laporan SAST HTML, mapping kategori, dan identitas merge tersedia di Artifacts Jenkins.
 
 Jenkins sehari-hari cukup **reservasi-pipeline** dengan `Jenkinsfile.dev` dari
-branch `ilyas`. `PROOF_GATE=none` menjalankan CI lengkap; `secret`/`sast` untuk uji
-fail-fast yang sengaja menghasilkan FAILURE. Job percobaan lama berada dalam
+branch asal `ilyas`, pada versi yang ditampilkan di form. **PILIH_PEMERIKSAAN**
+menawarkan pemeriksaan PR ilyas -> development, aplikasi asli pada versi tersebut,
+atau percobaan alat memakai contoh OWASP (bukan aplikasi). Percobaan hijau berarti
+contoh bermasalah berhasil ditolak. Job percobaan lama berada dalam
 folder arsip-reservasi dan nonaktif. Alur Git tetap ilyas -> PR development.
 
 Dokumen aktif: [arsitektur](ARCHITECTURE.md), [operasi dan demo rollback Windows](OPERATIONS.md),

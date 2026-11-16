@@ -55,7 +55,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   mkdirSync(path.dirname(planFile), { recursive: true });
   if (process.argv.includes('--describe')) {
     const plan = JSON.parse(readFileSync(planFile, 'utf8'));
-    console.log(plan.status === 'ready' ? `PR #${plan.number} ilyas -> development; head ${plan.head.slice(0, 8)}` : `PR: ${plan.status}`);
+    console.log(plan.status === 'ready' ? `PR #${plan.number} ilyas -> development; kode ${plan.head.slice(0, 8)} + development ${plan.base.slice(0, 8)}` : plan.status === 'no_eligible_pr' ? 'Tidak diperiksa: tidak ada PR terbuka ilyas -> development' : plan.status === 'unchanged' ? 'Tidak diperiksa ulang: kode PR ilyas -> development belum berubah' : `PR tidak dapat diperiksa: ${plan.status}`);
   } else {
     try {
       const plan = await makePlan({ force: process.env.PR_FORCE_RESCAN === 'true', prNumber: process.env.PR_NUMBER || '' });
