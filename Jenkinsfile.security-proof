@@ -1,5 +1,6 @@
 // Intentionally RED builds: the scanner must fail and the next stage must be skipped.
-// Use a separate manual job and workspace. Never point required PR checks at this job.
+// Historical template only. Active proofs use PROOF_GATE in Jenkinsfile.dev.
+// Old proof job/history is disabled under arsip-reservasi. Never require this template for PRs.
 pipeline {
     agent any
     options {

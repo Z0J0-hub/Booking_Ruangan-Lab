@@ -1,5 +1,10 @@
 # Reservasi Ruangan Perpustakaan
 
+Jenkins sehari-hari cukup **reservasi-pipeline** dengan `Jenkinsfile.dev` dari
+branch `ilyas`. `PROOF_GATE=none` menjalankan CI lengkap; `secret`/`sast` untuk uji
+fail-fast yang sengaja menghasilkan FAILURE. Job percobaan lama berada dalam
+folder arsip-reservasi dan nonaktif. Alur Git tetap ilyas -> PR development.
+
 Dokumen aktif: [arsitektur](ARCHITECTURE.md), [operasi dan demo rollback Windows](OPERATIONS.md),
 [status seluruh rubrik](RUBRIK_STATUS.md), serta [CI/PR/DAST](CI_PR_DAST.md).
 Untuk demo lokal terpantau: `npm.cmd run build` lalu `npm.cmd run ops:serve`.

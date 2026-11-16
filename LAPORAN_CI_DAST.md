@@ -9,9 +9,9 @@ belum ada commit, push, PR baru, atau merge.
 | Pengujian | Build | Hasil dan bukti |
 |---|---|---|
 | Baseline sebelum DAST | [reservasi-pipeline #15](http://localhost:8080/job/reservasi-pipeline/15/) | SUCCESS, parent commit 6e64c55 |
-| Fail-fast secret | [reservasi-local-proof #1](http://localhost:8080/job/reservasi-local-proof/1/) | FAILURE yang diharapkan: Gitleaks menemukan 1 secret sintetis, exit 1, Must Be Skipped dilewati |
-| Fail-fast SAST | [reservasi-local-proof #2](http://localhost:8080/job/reservasi-local-proof/2/) | FAILURE yang diharapkan: SAST menemukan 1 fixture tidak aman, exit 1, Must Be Skipped dilewati |
-| Pipeline lengkap + DAST | [reservasi-local-dast #3](http://localhost:8080/job/reservasi-local-dast/3/) | SUCCESS, durasi 115.013 detik; seluruh gate wajib lolos, dist dan laporan diarsipkan |
+| Fail-fast secret | [reservasi-local-proof #1](http://localhost:8080/job/arsip-reservasi/job/reservasi-local-proof/1/) | FAILURE yang diharapkan: Gitleaks menemukan 1 secret sintetis, exit 1, Must Be Skipped dilewati |
+| Fail-fast SAST | [reservasi-local-proof #2](http://localhost:8080/job/arsip-reservasi/job/reservasi-local-proof/2/) | FAILURE yang diharapkan: SAST menemukan 1 fixture tidak aman, exit 1, Must Be Skipped dilewati |
+| Pipeline lengkap + DAST | [reservasi-local-dast #3](http://localhost:8080/job/arsip-reservasi/job/reservasi-local-dast/3/) | SUCCESS, durasi 115.013 detik; seluruh gate wajib lolos, dist dan laporan diarsipkan |
 
 Kedua bukti negatif diverifikasi melalui status build, artifact scanner, exit code,
 dan pesan tahap berikutnya dilewati. Fixture dibersihkan pada post always.

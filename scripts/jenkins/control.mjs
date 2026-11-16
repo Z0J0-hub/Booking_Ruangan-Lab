@@ -123,32 +123,121 @@ try {
     const xml = readFileSync(path.join(root, 'scripts', 'jenkins', 'multibranch.xml'), 'utf8').replace('__GITHUB_CREDENTIALS_ID__', xmlEscape(credentialId));
     await request(`/createItem?name=${encodeURIComponent(job)}`, { method: 'POST', headers: { 'Content-Type': 'application/xml' }, body: xml });
     console.log(`Created disabled multibranch job ${job}. Verify isolated agent, public Supabase configuration, and GitHub status credential before enabling.`);
+  } else if (command === 'configure-main') {
+    const before = await (await request('/job/reservasi-pipeline/config.xml')).text();
+    if (!before.includes('CpsScmFlowDefinition') || !before.includes('<scriptPath>Jenkinsfile.dev</scriptPath>') || !before.includes('<name>*/ilyas</name>')) {
+      throw new Error('Expected reservasi-pipeline SCM job on ilyas / Jenkinsfile.dev.');
+    }
+    const values = await publicConfiguration(); let replaced = 0;
+    const after = before.replace(/<hudson\.model\.StringParameterDefinition>[\s\S]*?<\/hudson\.model\.StringParameterDefinition>/g, (block) => {
+      for (const [name, value] of Object.entries(values)) {
+        if (!block.includes(`<name>${name}</name>`)) continue;
+        replaced++;
+        const field = `<defaultValue>${xmlEscape(value)}</defaultValue>`;
+        return /<defaultValue(?:\/>|>)/.test(block)
+          ? block.replace(/<defaultValue(?:\/>|>[\s\S]*?<\/defaultValue>)/, field)
+          : block.replace('</hudson.model.StringParameterDefinition>', `${field}</hudson.model.StringParameterDefinition>`);
+      }
+      return block;
+    });
+    if (replaced !== 2) throw new Error('Cannot identify both public configuration parameters.');
+    await request('/job/reservasi-pipeline/config.xml', { method: 'POST', headers: { 'Content-Type': 'application/xml' }, body: after });
+    console.log('Main SCM configuration verified; public Supabase defaults restored for manual/polled builds. No secret values printed.');
+  } else if (command === 'consolidate') {
+    const names = ['reservasi-local-proof', 'reservasi-local-dast', 'reservasi-local-ops', 'reservasi-pr-security'];
+    const backup = path.join(root, '.runtime', 'jenkins-before-consolidation'); mkdirSync(backup, { recursive: true });
+    const index = await (await request('/api/json?tree=jobs[name]')).json();
+    for (const name of ['reservasi-pipeline', ...names]) {
+      if (!index.jobs.some((entry) => entry.name === name)) continue;
+      const configXml = await (await request(`/job/${name}/config.xml`)).text();
+      writeFileSync(path.join(backup, `${name}.xml`), configXml);
+      const data = await (await request(`/job/${name}/api/json?tree=name,builds[number,result,url,building,artifacts[fileName,relativePath]]`)).json();
+      writeFileSync(path.join(backup, `${name}.json`), JSON.stringify(data, null, 2) + '\n');
+    }
+    // Whitelisted, reversible folder moves only. Do not delete jobs or build history.
+    const script = `
+import jenkins.model.Jenkins
+import hudson.model.Items
+import hudson.model.Item
+import com.cloudbees.hudson.plugins.folder.Folder
+def j = Jenkins.get()
+j.checkPermission(Jenkins.ADMINISTER)
+def names = ['reservasi-local-proof','reservasi-local-dast','reservasi-local-ops','reservasi-pr-security']
+def existingFolder = j.getItem('arsip-reservasi')
+if (existingFolder != null && !(existingFolder instanceof Folder)) { throw new IllegalStateException('Archive name is not a folder') }
+def jobsRoot = new File(j.rootDir, 'jobs').canonicalFile.toPath()
+names.each { name ->
+    def item = j.getItem(name)
+    if (item != null) {
+        item.checkPermission(Item.CONFIGURE)
+        item.checkPermission(Item.DELETE)
+        if (!item.rootDir.canonicalFile.toPath().startsWith(jobsRoot)) { throw new IllegalStateException('Source outside Jenkins jobs') }
+        if (item instanceof hudson.model.Job && item.builds.any { it.isBuilding() }) { throw new IllegalStateException('Archive job is building: ' + name) }
+        if (j.queue.items.any { it.task.fullName == name }) { throw new IllegalStateException('Archive job is queued: ' + name) }
+        if (existingFolder?.getItem(name) != null) { throw new IllegalStateException('Archive destination exists: ' + name) }
+    }
+}
+def folder = existingFolder ?: j.createProject(Folder.class, 'arsip-reservasi')
+folder.checkPermission(Item.CREATE)
+if (!folder.rootDir.canonicalFile.toPath().startsWith(jobsRoot)) { throw new IllegalStateException('Destination outside Jenkins jobs') }
+folder.setDisplayName('Arsip uji reservasi (nonaktif)')
+folder.setDescription('Riwayat pengujian lama. Gunakan reservasi-pipeline untuk CI lengkap dan proof fail-fast.')
+folder.save()
+names.each { name ->
+    def item = j.getItem(name)
+    if (item != null) {
+        item.setDisabled(true)
+        item.save()
+        Items.move(item, folder)
+    }
+    def archived = folder.getItem(name)
+    if (archived != null) { println(archived.fullName + ': disabled=' + archived.isDisabled()) }
+}
+def main = j.getItem('reservasi-pipeline')
+main.setDescription('Pipeline utama reservasi: ilyas -> PR development. PROOF_GATE=none untuk CI lengkap; secret/sast untuk uji fail-fast sintetis. Riwayat percobaan ada di arsip-reservasi.')
+main.save()
+println('Main pipeline: ' + main.fullName)
+`;
+    const response = await (await request('/scriptText', { method: 'POST', body: new URLSearchParams({ script }) })).text();
+    if (!response.includes('Main pipeline: reservasi-pipeline')) throw new Error('CONSOLIDATION_NOT_CONFIRMED');
+    const state = await (await request('/job/arsip-reservasi/api/json?tree=jobs[name,buildable,lastBuild[number,result]]')).json();
+    if (state.jobs.length !== 4 || state.jobs.some((entry) => entry.buildable)) throw new Error('ARCHIVE_VERIFICATION_FAILED');
+    writeFileSync(path.join(reportDir, 'consolidation.json'), JSON.stringify(state, null, 2) + '\n');
+    console.log(response.trim());
   } else if (command === 'start') {
     const response = await request(`${jobPath}/build`, { method: 'POST' });
     console.log(`Queued: ${response.headers.get('location') || 'check job queue'}`);
   } else if (command === 'build-validation') {
     const values = await publicConfiguration();
-    const body = new URLSearchParams({ ...values, RUN_STRIDE_DATABASE: 'false', STRIDE_DB_HOST: '' });
+    const body = new URLSearchParams({ ...values, PROOF_GATE: 'none', RUN_STRIDE_DATABASE: 'false', STRIDE_DB_HOST: '' });
     const response = await request(`${jobPath}/buildWithParameters`, { method: 'POST', body });
     console.log(`Validation queued with existing public configuration: ${response.headers.get('location') || 'check job queue'}`);
   } else if (command === 'build-proof') {
     const gate = process.argv[4] || 'secret';
     if (!['secret', 'sast'].includes(gate)) throw new Error('Invalid proof gate.');
     // Parameters are registered on the first build; initialize with a normal build if needed.
-    const response = await request(`${jobPath}/buildWithParameters?PROOF_GATE=${gate}`, { method: 'POST' });
+    const values = job === 'reservasi-pipeline' ? await publicConfiguration() : {};
+    const response = await request(`${jobPath}/buildWithParameters`, { method: 'POST', body: new URLSearchParams({ ...values, PROOF_GATE: gate, RUN_STRIDE_DATABASE: 'false', STRIDE_DB_HOST: '' }) });
     console.log(`Proof queued: ${response.headers.get('location') || 'check job queue'}`);
   } else if (command === 'automation-state') {
     const classic = await (await request('/job/reservasi-pipeline/config.xml')).text();
-    const multibranch = await (await request('/job/reservasi-pr-security/config.xml')).text();
+    const index = await (await request('/api/json?tree=jobs[name]')).json();
+    const archived = index.jobs.some((entry) => entry.name === 'arsip-reservasi');
+    const multibranchPath = archived ? '/job/arsip-reservasi/job/reservasi-pr-security' : '/job/reservasi-pr-security';
+    const multibranch = await (await request(`${multibranchPath}/config.xml`)).text();
     const state = { classicJob: 'reservasi-pipeline', trustedBranch: 'ilyas',
       pollingConfigured: classic.includes('hudson.triggers.SCMTrigger') && classic.includes('H/5 * * * *'),
-      multibranchJob: 'reservasi-pr-security', multibranchDisabled: multibranch.includes('<disabled>true</disabled>'),
+      multibranchJob: archived ? 'arsip-reservasi/reservasi-pr-security' : 'reservasi-pr-security', multibranchDisabled: multibranch.includes('<disabled>true</disabled>'),
       originPRDiscovery: multibranch.includes('OriginPullRequestDiscoveryTrait'),
       mergeRevision: /OriginPullRequestDiscoveryTrait>[\s\S]*?<strategyId>1<\/strategyId>/.test(multibranch),
       periodicDiscovery: multibranch.includes('<interval>900000</interval>'),
       prEventBuildVerified: false, requiredChecksVerified: false };
     writeFileSync(path.join(reportDir, 'automation-state.json'), JSON.stringify(state, null, 2) + '\n');
     console.log(JSON.stringify(state, null, 2));
+  } else if (command === 'status') {
+    const data = await (await request(`${jobPath}/api/json?tree=name,buildable,nextBuildNumber,builds[number,result,building,description,actions[lastBuiltRevision[SHA1]]]`)).json();
+    console.log(JSON.stringify({ ...data, builds: data.builds.slice(0, 6).map((build) => ({ number: build.number, result: build.result,
+      building: build.building, description: build.description, commit: build.actions.find((action) => action.lastBuiltRevision)?.lastBuiltRevision.SHA1 || null })) }, null, 2));
   } else if (command === 'scan-report') {
     const number = process.argv[4];
     const category = process.argv[5];
@@ -175,7 +264,9 @@ try {
       const scan = await (await request(`${jobPath}/${number}/artifact/reports/${category}/summary.json`)).json();
       const consoleText = await (await request(`${jobPath}/${number}/consoleText`)).text();
       evidence.proof = { gate, scanStatus: scan.status, scanExitCode: scan.exitCode, findings: scan.findings.length,
-        nextStageSkipped: consoleText.includes('Stage "Must Be Skipped" skipped due to earlier failure(s)'),
+        nextStageSkipped: consoleText.includes(job === 'reservasi-pipeline'
+          ? 'Stage "Archive Build" skipped due to earlier failure(s)'
+          : 'Stage "Must Be Skipped" skipped due to earlier failure(s)'),
         scannerExitOne: consoleText.includes('script returned exit code 1') };
       evidence.proof.verified = build.result === 'FAILURE' && !build.building && scan.status === 'blocked' && scan.exitCode === 1 &&
         scan.findings.length > 0 && evidence.proof.nextStageSkipped && evidence.proof.scannerExitOne;

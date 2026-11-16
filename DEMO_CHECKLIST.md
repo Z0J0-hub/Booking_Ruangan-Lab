@@ -1,11 +1,15 @@
 # Urutan demo dan bukti penilaian
 
+Penggunaan sekarang: reservasi-pipeline, PROOF_GATE=none (CI lengkap), secret/sast
+(demo negatif). Job lokal di tautan bukti lama sudah nonaktif di arsip-reservasi;
+nomor buildnya tetap menjadi bukti historis.
+
 Gunakan data/akun tes dan jelaskan batas cakupan setiap alat. Tidak perlu
 memperlihatkan file token Jenkins atau credential database.
 
 1. Tampilkan ARCHITECTURE.md dan STRIDE_MATRIX.md: browser langsung ke Supabase,
    trust boundary, role student/admin, ancaman, mitigasi, dan gap pengujian.
-2. Tampilkan [reservasi-local-ops #2](http://localhost:8080/job/reservasi-local-ops/2/):
+2. Tampilkan [reservasi-local-ops #2](http://localhost:8080/job/arsip-reservasi/job/reservasi-local-ops/2/):
    Console/Artifacts, Infrastructure Configuration, DAST Staging, Operations Drill,
    serta Archive Build. Source adalah snapshot lokal, bukan commit baru.
 3. Bandingkan reports/infra/before.json dengan summary.json: 25 temuan baseline

@@ -1,5 +1,37 @@
 # PR security CI, bukti fail-fast, dan DAST staging
 
+## Penggunaan aktif sejak 16 November 2026: satu job
+
+Gunakan **reservasi-pipeline**, branch `ilyas`, Script Path `Jenkinsfile.dev`.
+Build with Parameters menyediakan `PROOF_GATE`:
+
+- `none` (default): scan source/dependency/IaC, tes, build, DAST, drill operasi,
+  dan archive dalam satu job.
+- `secret`: temuan sintetis masuk ke gate Secret Scan; FAILURE dan tahap berikut
+  dilewati adalah hasil yang diharapkan.
+- `sast`: temuan sintetis masuk ke gate SAST dengan perilaku yang sama.
+
+Fixture dibersihkan sebelum pemeriksaan source dan pada post always. Mode proof
+menolak tes database dan konteks PR. Artifact dist tidak boleh dipromosikan dari
+mode proof. Parameter publik Supabase diingat untuk build berikutnya; default
+PROOF_GATE selalu none agar polling tidak mengulang proof negatif.
+
+```powershell
+node scripts/jenkins/control.mjs build-validation reservasi-pipeline
+node scripts/jenkins/control.mjs build-proof reservasi-pipeline secret
+node scripts/jenkins/control.mjs build-proof reservasi-pipeline sast
+node scripts/jenkins/control.mjs verify-proof reservasi-pipeline <nomor-build> secret
+```
+
+Job `reservasi-local-*` dan `reservasi-pr-security` dipindahkan ke folder
+**arsip-reservasi**, dinonaktifkan, dan tetap menyimpan riwayat build/artifact.
+Jenkinsfile.security-proof serta helper snapshot di bawah adalah referensi historis,
+bukan job tambahan yang diperlukan. PR otomatis/required checks masih belum aktif.
+Job `declarative-pipeline` milik pengguna tidak diubah.
+
+Bagian berikut menyimpan detail implementasi dan prosedur pengujian sebelum
+konsolidasi. Untuk pekerjaan baru, gunakan job tunggal di atas.
+
 Lingkungan: Jenkins Windows, Node.js 24, Git, curl.exe, PowerShell, Java 17+.
 Docker/WSL tidak diperlukan. Tidak ada deployment produksi dalam alur ini.
 

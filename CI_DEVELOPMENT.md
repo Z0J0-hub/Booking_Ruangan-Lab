@@ -1,5 +1,9 @@
 # CI Development - Supabase
 
+Sejak konsolidasi 16 November, semua pemeriksaan Windows dan proof fail-fast
+dijalankan dari reservasi-pipeline / Jenkinsfile.dev. Pilih PROOF_GATE=none untuk
+build biasa. Job percobaan lama dipindahkan ke folder arsip-reservasi nonaktif.
+
 Pengembangan PR otomatis, job bukti fail-fast, dan tahap DAST setelah build
 dijelaskan pada [CI_PR_DAST.md](CI_PR_DAST.md). Catatan validasi lama di bawah
 adalah baseline sebelum penambahan tersebut, bukan status hasil build terbaru.

@@ -40,7 +40,7 @@ notifikasi operasional eksternal.
 PAPER_DRAFT.md disiapkan sebagai bahan awal; paper final/presentasi/pengumpulan LMS
 tidak ditandai selesai tanpa bukti dari tim.
 
-Validasi gabungan: [reservasi-local-ops #2](http://localhost:8080/job/reservasi-local-ops/2/),
+Validasi gabungan: [reservasi-local-ops #2](http://localhost:8080/job/arsip-reservasi/job/reservasi-local-ops/2/),
 SUCCESS, 86.540 detik, snapshot
 `290de7bc3dbc5b75f096b28a23083e636669be49063101c0f692ff64728c01f3`.
 38 tes CI/ops + 7 auth + 1 integrasi Gitleaks lolos. Drill Jenkins memulihkan rilis

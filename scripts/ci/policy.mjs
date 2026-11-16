@@ -9,6 +9,11 @@ export function validatePipelinePolicy(env = process.env) {
     throw new Error('This pipeline accepts pull requests targeting development only.');
   }
   const databaseRequested = env.RUN_STRIDE_DATABASE === 'true';
+  const proof = env.PROOF_GATE || 'none';
+  if (!['none', 'secret', 'sast'].includes(proof)) throw new Error('Unknown fail-fast proof mode.');
+  if (proof !== 'none' && (changeRequest || databaseRequested)) {
+    throw new Error('Synthetic fail-fast proofs are manual source-only runs, without database tests or PR context.');
+  }
   if (databaseRequested && (changeRequest || env.BRANCH_NAME !== 'development')) {
     throw new Error('Database tests require the trusted development branch, not a PR or a classic job without branch identity.');
   }

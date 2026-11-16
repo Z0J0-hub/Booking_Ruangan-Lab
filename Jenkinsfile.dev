@@ -14,9 +14,11 @@ pipeline {
     triggers { pollSCM('H/5 * * * *') }
 
     parameters {
-        string(name: 'SUPABASE_URL', defaultValue: '', trim: true,
+        choice(name: 'PROOF_GATE', choices: ['none', 'secret', 'sast'],
+            description: 'none = CI lengkap. secret/sast = uji fail-fast sintetis; build FAILURE memang diharapkan.')
+        string(name: 'SUPABASE_URL', defaultValue: params.SUPABASE_URL ?: env.CI_SUPABASE_URL ?: '', trim: true,
             description: 'Public Supabase project URL for this build.')
-        string(name: 'SUPABASE_PUBLIC_KEY', defaultValue: '', trim: true,
+        string(name: 'SUPABASE_PUBLIC_KEY', defaultValue: params.SUPABASE_PUBLIC_KEY ?: env.CI_SUPABASE_PUBLIC_KEY ?: '', trim: true,
             description: 'Public anon/publishable key. Never enter a service_role/secret key.')
         booleanParam(name: 'RUN_STRIDE_DATABASE', defaultValue: false,
             description: 'Opt-in: write synthetic fixtures to an approved development DB, then ROLLBACK. Read the STRIDE guide first.')
@@ -55,6 +57,11 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+                script {
+                    currentBuild.description = (params.PROOF_GATE ?: 'none') == 'none'
+                        ? 'CI lengkap: source, infra, DAST, dan operasi'
+                        : "Uji fail-fast ${params.PROOF_GATE}: FAILURE diharapkan"
+                }
 
                 bat '''
                     git rev-parse --verify HEAD
@@ -70,7 +77,9 @@ pipeline {
             steps {
                 // Remove generated reports from older runs on reused agents.
                 dir('reports') { deleteDir() }
-                withEnv(["RUN_STRIDE_DATABASE=${params.RUN_STRIDE_DATABASE}"]) {
+                // Also remove a fixture left by an interrupted proof before scanning source.
+                bat 'node scripts/ci/proof-fixture.mjs clean'
+                withEnv(["RUN_STRIDE_DATABASE=${params.RUN_STRIDE_DATABASE}", "PROOF_GATE=${params.PROOF_GATE ?: 'none'}"]) {
                     bat 'node scripts/ci/policy.mjs'
                 }
             }
@@ -106,6 +115,19 @@ pipeline {
                     call npm.cmd run test:ci
                     if errorlevel 1 exit /b 1
                 '''
+            }
+        }
+
+        stage('Prepare Fail-Fast Proof') {
+            when { expression { (params.PROOF_GATE ?: 'none') != 'none' } }
+            steps {
+                withEnv(["PROOF_GATE=${params.PROOF_GATE}"]) {
+                    bat '''
+                        @echo off
+                        node scripts/ci/proof-fixture.mjs %PROOF_GATE%
+                        if errorlevel 1 exit /b 1
+                    '''
+                }
             }
         }
 
@@ -251,8 +273,23 @@ pipeline {
 
         stage('Archive Build') {
             steps {
+                script {
+                    if ((params.PROOF_GATE ?: 'none') != 'none') {
+                        error('Proof tidak terblokir oleh scanner. Artifact tidak boleh dipromosikan.')
+                    }
+                }
                 archiveArtifacts artifacts: 'dist/**',
                     fingerprint: true
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                if (fileExists('scripts/ci/proof-fixture.mjs')) {
+                    bat 'node scripts/ci/proof-fixture.mjs clean'
+                }
             }
         }
     }
