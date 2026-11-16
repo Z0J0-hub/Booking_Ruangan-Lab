@@ -66,8 +66,10 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                checkout scm
                 script {
+                    def checked = checkout scm
+                    env.GIT_COMMIT = checked.GIT_COMMIT
+                    if (!(env.GIT_COMMIT ?: '').matches('[a-f0-9]{40}')) { error('Trusted checkout did not return an exact revision.') }
                     currentBuild.description = env.CI_RUN_MODE == 'pr' ? 'PR discovery: ilyas -> development' : (params.PROOF_GATE ?: 'none') == 'none'
                         ? 'CI lengkap: source, infra, DAST, dan operasi'
                         : "Uji fail-fast ${params.PROOF_GATE}: FAILURE diharapkan"

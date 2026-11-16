@@ -54,6 +54,9 @@ Karena itu job mengambil **Jenkinsfile.dev dan toolchain dari commit ilyas yang
 direview dan dipin oleh admin**, lalu mengambil JS/TS PR dari objek Git sebagai data.
 Lightweight checkout dimatikan untuk pin SHA karena GitSCMFileSystem dapat
 memperlakukan SHA sebagai nama branch. Full checkout tetap memakai commit tepat.
+Hasil checkout diteruskan eksplisit sebagai GIT_COMMIT untuk identitas scanner.
+Cache node_modules, tools, runtime, reports, dan dist dikecualikan dari pemilihan
+source; workspace lama tidak menyebabkan dependency dianggap kode aplikasi.
 
 Git hooks dimatikan; tidak ada checkout/smudge filter PR. Symlink, submodule source,
 traversal, nama Windows berbahaya, collision huruf besar/kecil, dan source berlebih
