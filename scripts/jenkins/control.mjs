@@ -132,13 +132,14 @@ try {
     if (head.status !== 0 || head.stdout.trim() !== revision || dirty.status !== 0 || dirty.stdout.trim()) throw new Error('Commit and review local changes before activating the trusted PR scanner.');
     const before = await (await request('/job/reservasi-pipeline/config.xml')).text();
     if (!before.includes('CpsScmFlowDefinition') || !before.includes('https://github.com/Z0J0-hub/Booking_Ruangan-Lab.git') || !before.includes('<scriptPath>Jenkinsfile.dev</scriptPath>')) throw new Error('Unexpected main SCM configuration.');
-    const after = before.replace(/(<hudson\.plugins\.git\.BranchSpec>\s*<name>)[^<]+(<\/name>\s*<\/hudson\.plugins\.git\.BranchSpec>)/, (_, prefix, suffix) => prefix + revision + suffix);
+    const after = before.replace(/(<hudson\.plugins\.git\.BranchSpec>\s*<name>)[^<]+(<\/name>\s*<\/hudson\.plugins\.git\.BranchSpec>)/, (_, prefix, suffix) => prefix + revision + suffix)
+      .replace('<lightweight>true</lightweight>', '<lightweight>false</lightweight>');
     if (after === before && !before.includes(`<name>${revision}</name>`)) throw new Error('Cannot identify SCM revision.');
     const backup = path.join(root, '.runtime', 'jenkins-pr-activation'); mkdirSync(backup, { recursive: true });
     writeFileSync(path.join(backup, 'before.xml'), before);
     await request('/job/reservasi-pipeline/config.xml', { method: 'POST', headers: { 'Content-Type': 'application/xml' }, body: after });
     const verify = await (await request('/job/reservasi-pipeline/config.xml')).text();
-    if (!verify.includes(`<name>${revision}</name>`)) throw new Error('Trusted revision not confirmed.');
+    if (!verify.includes(`<name>${revision}</name>`) || verify.includes('<lightweight>true</lightweight>')) throw new Error('Trusted revision/full checkout not confirmed.');
     writeFileSync(path.join(reportDir, 'pr-activation.json'), JSON.stringify({ job: 'reservasi-pipeline', trustedScannerRevision: revision,
       target: 'development', source: 'ilyas', mode: 'data-only PR merge SAST', pollingMinutes: 5 }, null, 2) + '\n');
     console.log(`Trusted PR scanner pinned to ${revision}. Run one full/manual build to register the timer and PR parameters.`);

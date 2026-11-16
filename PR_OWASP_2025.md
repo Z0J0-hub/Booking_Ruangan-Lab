@@ -52,6 +52,8 @@ Controller Windows masih memakai SYSTEM. Menjalankan Jenkinsfile/npm scripts dar
 PR pada controller itu dapat memberi PR akses ke mesin dan credential Jenkins.
 Karena itu job mengambil **Jenkinsfile.dev dan toolchain dari commit ilyas yang
 direview dan dipin oleh admin**, lalu mengambil JS/TS PR dari objek Git sebagai data.
+Lightweight checkout dimatikan untuk pin SHA karena GitSCMFileSystem dapat
+memperlakukan SHA sebagai nama branch. Full checkout tetap memakai commit tepat.
 
 Git hooks dimatikan; tidak ada checkout/smudge filter PR. Symlink, submodule source,
 traversal, nama Windows berbahaya, collision huruf besar/kecil, dan source berlebih
