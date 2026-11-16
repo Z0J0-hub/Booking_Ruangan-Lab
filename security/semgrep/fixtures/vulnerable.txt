@@ -1,6 +1,8 @@
 // Synthetic scanner fixture only. Never execute or deploy this example.
 client.auth.admin.listUsers();
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+cors({ origin: true, credentials: true });
+new Buffer(128);
 require(req.query.module);
 crypto.createHash('md5');
 eval(req.body.code);

@@ -63,7 +63,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       console.log(`PR discovery: ${plan.status}; target=development; source=ilyas.`);
       process.exitCode = plan.status === 'ready' ? 0 : 3;
     } catch (error) {
-      writeFileSync(planFile, JSON.stringify({ status: 'error', code: /^[A-Z0-9_]+$/.test(error.message) ? error.message : 'PR_DISCOVERY_ERROR' }, null, 2) + '\n');
+      writeFileSync(planFile, JSON.stringify({ status: 'error', code: /^[A-Z0-9_]+$/.test(error.message) ? error.message : 'PR_DISCOVERY_ERROR',
+        cause: /^[A-Z0-9_]+$/.test(error.cause?.code || '') ? error.cause.code : null }, null, 2) + '\n');
       console.error('PR discovery failed; no passing PR result is claimed.'); process.exitCode = 2;
     }
   }
