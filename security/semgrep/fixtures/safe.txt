@@ -1,0 +1,10 @@
+// Synthetic negative-control fixture; scanned only, never executed.
+client.auth.getUser();
+crypto.createHash('sha256');
+Buffer.alloc(128);
+cors({ origin: allowedOrigin, credentials: true });
+element.textContent = displayName;
+if (profile.role === 'admin') { renderAdminView(); }
+jwt.verify(token, publicKey);
+logger.info('authentication_failed');
+try { operation(); } catch (error) { throw error; }

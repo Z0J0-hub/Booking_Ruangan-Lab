@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 node_modules
+.tools
+*.local.json
+.runtime
+reports
 **/node_modules
 dist
 coverage

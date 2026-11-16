@@ -1,0 +1,18 @@
+// Synthetic scanner fixture only. Never execute or deploy this example.
+client.auth.admin.listUsers();
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+cors({ origin: true, credentials: true });
+new Buffer(128);
+require(req.query.module);
+crypto.createHash('md5');
+eval(req.body.code);
+const command = req.query.command;
+exec(command);
+element.innerHTML = req.query.html;
+if (req.body.role === 'admin') { allowPrivilegedAction(); }
+jwt.decode(token);
+const serialized = req.body.serialized;
+serializer.unserialize(serialized);
+logger.info(req.body.password);
+try { operation(); } catch (error) { }
+function failOpen() { try { authenticate(); } catch (error) { return true; } }

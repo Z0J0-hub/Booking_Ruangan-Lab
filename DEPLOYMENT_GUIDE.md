@@ -1,5 +1,12 @@
 # Deployment Guide
 
+Panduan aktif Windows dan container frontend Supabase: [OPERATIONS.md](OPERATIONS.md).
+Jangan gunakan perintah backend/database legacy di bawah untuk versi aktif.
+
+> Legacy deployment guide. For the active Supabase version, use
+> [supabase/README.md](supabase/README.md) and [CI_DEVELOPMENT.md](CI_DEVELOPMENT.md).
+> Backend/MySQL commands below do not apply to this version.
+
 This guide covers deploying the Lab Booking System to production using Docker and Jenkins.
 
 ## Prerequisites

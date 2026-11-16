@@ -1,5 +1,8 @@
 # Security Audit Report
 
+> Legacy report, not evidence for the Supabase configuration. Use
+> [STRIDE_MATRIX.md](STRIDE_MATRIX.md) for current scope and verification status.
+
 ## Audit Information
 
 | Field | Value |

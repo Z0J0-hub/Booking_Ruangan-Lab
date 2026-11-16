@@ -7,9 +7,13 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+reports/
+.tools/
 dist
 dist-ssr
 *.local
+*.local.json
+.runtime/
 
 .vscode/*
 !.vscode/extensions.json
@@ -21,3 +25,5 @@ dist-ssr
 *.sln
 *.sw?
 .env
+.env.*
+!.env.example

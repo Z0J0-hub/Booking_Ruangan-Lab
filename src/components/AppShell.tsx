@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAuthStore } from '@/features/auth/store/authStore';
+import { useAuthStore } from '@/features/auth';
 import {
   LibraryBig,
   LayoutDashboard,
@@ -9,9 +9,9 @@ import {
   Menu,
   X,
 } from 'lucide-react';
-import { LibraryDashboardPage } from '@/features/dashboard/pages/LibraryDashboardPage';
-import { LibraryBookingsPage } from '@/features/bookings/pages/LibraryBookingsPage';
-import { RoomsPage } from '@/features/rooms/pages/RoomsPage';
+import { LibraryDashboardPage } from '@/pages/LibraryDashboardPage';
+import { LibraryBookingsPage } from '@/pages/LibraryBookingsPage';
+import { RoomsPage } from '@/pages/RoomsPage';
 
 type Page = 'dashboard' | 'bookings' | 'rooms';
 
@@ -94,7 +94,7 @@ export function AppShell() {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-slate-900 truncate">{user.full_name}</p>
               <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${isAdmin ? 'bg-rose-50 text-rose-700' : 'bg-sky-50 text-sky-700'}`}>
-                {isAdmin ? 'Administrator' : user.member_type === 'employee' ? 'Pegawai' : 'Mahasiswa'}
+                {isAdmin ? 'Administrator' : 'Mahasiswa'}
               </span>
             </div>
           </div>

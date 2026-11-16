@@ -1,0 +1,351 @@
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10'))
+    }
+
+    // Local Jenkins polls GitHub PR metadata; only changed ilyas -> development PRs are scanned.
+    // The controller pins this pipeline/tooling to a reviewed commit; PR source is data only.
+    triggers { cron('H/5 * * * *') }
+
+    parameters {
+        choice(name: 'RUN_MODE', choices: ['full', 'pr'], description: 'full = CI manual pada revisi toolchain yang disetujui; pr = cek PR ilyas ke development. Timer selalu memilih pr.')
+        string(name: 'PR_NUMBER', defaultValue: '', trim: true, description: 'Opsional: nomor PR origin ilyas ke development untuk pemeriksaan manual.')
+        booleanParam(name: 'PR_FORCE_RESCAN', defaultValue: false, description: 'Pindai ulang PR walaupun head/base belum berubah.')
+        choice(name: 'PROOF_GATE', choices: ['none', 'secret', 'sast', 'owasp'],
+            description: 'none = normal; secret/sast/owasp = fixture negatif. Khusus RUN_MODE=full; FAILURE diharapkan.')
+        string(name: 'SUPABASE_URL', defaultValue: params.SUPABASE_URL ?: env.CI_SUPABASE_URL ?: '', trim: true,
+            description: 'Public Supabase project URL for this build.')
+        string(name: 'SUPABASE_PUBLIC_KEY', defaultValue: params.SUPABASE_PUBLIC_KEY ?: env.CI_SUPABASE_PUBLIC_KEY ?: '', trim: true,
+            description: 'Public anon/publishable key. Never enter a service_role/secret key.')
+        booleanParam(name: 'RUN_STRIDE_DATABASE', defaultValue: false,
+            description: 'Opt-in: write synthetic fixtures to an approved development DB, then ROLLBACK. Read the STRIDE guide first.')
+        string(name: 'STRIDE_DB_HOST', defaultValue: '', trim: true,
+            description: 'Approved test database hostname only; never enter a password here.')
+    }
+
+    environment {
+        VITE_SUPABASE_URL = "${params.SUPABASE_URL ?: env.CI_SUPABASE_URL ?: ''}"
+        VITE_SUPABASE_ANON_KEY = "${params.SUPABASE_PUBLIC_KEY ?: env.CI_SUPABASE_PUBLIC_KEY ?: ''}"
+    }
+
+    stages {
+
+        stage('Cek Lingkungan') {
+            steps {
+                script {
+                    if (isUnix()) { error('Jenkinsfile.dev requires a Windows agent.') }
+                    def timer = !currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause').isEmpty()
+                    env.CI_RUN_MODE = timer ? 'pr' : (params.RUN_MODE ?: 'full')
+                    env.PR_SCAN_REQUIRED = 'false'
+                    if (!(env.CI_RUN_MODE in ['full', 'pr'])) { error('Unknown RUN_MODE') }
+                    if (env.CI_RUN_MODE == 'pr' && ((params.PROOF_GATE ?: 'none') != 'none' || params.RUN_STRIDE_DATABASE)) {
+                        error('PR source-only scans cannot run proof fixtures or database tests.')
+                    }
+                }
+                bat '''
+                    whoami
+                    hostname
+
+                    node --version
+                    if errorlevel 1 exit /b 1
+
+                    call npm.cmd --version
+                    if errorlevel 1 exit /b 1
+
+                    git --version
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+        }
+
+        stage('Checkout') {
+            steps {
+                script {
+                    def checked = checkout scm
+                    env.GIT_COMMIT = checked.GIT_COMMIT
+                    if (!(env.GIT_COMMIT ?: '').matches('[a-f0-9]{40}')) { error('Trusted checkout did not return an exact revision.') }
+                    currentBuild.description = env.CI_RUN_MODE == 'pr' ? 'PR discovery: ilyas -> development' : (params.PROOF_GATE ?: 'none') == 'none'
+                        ? 'CI lengkap: source, infra, DAST, dan operasi'
+                        : "Uji fail-fast ${params.PROOF_GATE}: FAILURE diharapkan"
+                }
+                dir('reports') { deleteDir() }
+                bat 'node scripts/ci/proof-fixture.mjs clean'
+
+                bat '''
+                    git rev-parse --verify HEAD
+                    if errorlevel 1 exit /b 1
+
+                    git log -1 --oneline
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+        }
+
+        stage('Discover Development PR') {
+            when { expression { env.CI_RUN_MODE == 'pr' } }
+            steps {
+                script {
+                    def code = bat(returnStatus: true, script: '@echo off\nnode scripts/pr/plan.mjs')
+                    if (code == 3) {
+                        currentBuild.result = 'NOT_BUILT'
+                    } else if (code != 0) {
+                        error('PR discovery failed. No passing PR result is claimed.')
+                    } else { env.PR_SCAN_REQUIRED = 'true' }
+                    currentBuild.description = bat(returnStdout: true, script: '@echo off\nnode scripts/pr/plan.mjs --describe').trim()
+                }
+            }
+        }
+
+        stage('Pipeline Policy') {
+            when { expression { env.CI_RUN_MODE == 'full' || env.PR_SCAN_REQUIRED == 'true' } }
+            steps {
+                // Remove generated reports from older runs on reused agents.
+                // Also remove a fixture left by an interrupted proof before scanning source.
+                bat 'node scripts/ci/proof-fixture.mjs clean'
+                withEnv(["RUN_STRIDE_DATABASE=${params.RUN_STRIDE_DATABASE}", "PROOF_GATE=${params.PROOF_GATE ?: 'none'}", "CHANGE_TARGET=${env.CI_RUN_MODE == 'pr' ? 'development' : env.CHANGE_TARGET ?: ''}"]) {
+                    bat 'node scripts/ci/policy.mjs'
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            when { expression { env.CI_RUN_MODE == 'full' || env.PR_SCAN_REQUIRED == 'true' } }
+            steps {
+                bat '''
+                    call npm.cmd ci --no-audit --no-fund
+                    if errorlevel 1 exit /b 1
+                '''
+
+            }
+        }
+
+        stage('SAST Toolchain') {
+            when { expression { env.CI_RUN_MODE == 'full' || env.PR_SCAN_REQUIRED == 'true' } }
+            steps { bat 'call npm.cmd run ci:sast:setup' }
+        }
+
+        stage('Infrastructure Configuration') {
+            when { expression { env.CI_RUN_MODE == 'full' } }
+            steps {
+                bat '''
+                    @echo off
+                    call npm.cmd run ci:infra:setup
+                    if errorlevel 1 exit /b 1
+                    call npm.cmd run ci:infra
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+            post { always { archiveArtifacts artifacts: 'reports/infra/summary.json', allowEmptyArchive: true, fingerprint: true } }
+        }
+
+        stage('CI Module Tests') {
+            when { expression { env.CI_RUN_MODE == 'full' || env.PR_SCAN_REQUIRED == 'true' } }
+            steps {
+                bat '''
+                    @echo off
+                    call npm.cmd run test:ci
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+        }
+
+        stage('Prepare Fail-Fast Proof') {
+            when { expression { env.CI_RUN_MODE == 'full' && (params.PROOF_GATE ?: 'none') != 'none' } }
+            steps {
+                withEnv(["PROOF_GATE=${params.PROOF_GATE}"]) {
+                    bat '''
+                        @echo off
+                        node scripts/ci/proof-fixture.mjs %PROOF_GATE%
+                        if errorlevel 1 exit /b 1
+                    '''
+                }
+            }
+        }
+
+        stage('Secret Scan') {
+            when { expression { env.CI_RUN_MODE == 'full' } }
+            steps {
+                bat '''
+                    @echo off
+                    call npm.cmd run ci:secrets
+                    if errorlevel 1 exit /b 1
+                    call npm.cmd run test:secret-gate
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/secrets/*',
+                        fingerprint: true
+                }
+            }
+        }
+
+        stage('Dependency Audit') {
+            when { expression { env.CI_RUN_MODE == 'full' } }
+            steps {
+                bat '''
+                    @echo off
+                    call npm.cmd run ci:audit
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/audit/*',
+                        fingerprint: true
+                }
+            }
+        }
+
+        stage('SAST') {
+            when { expression { env.CI_RUN_MODE == 'full' || env.PR_SCAN_REQUIRED == 'true' } }
+            steps {
+                script {
+                    if (env.CI_RUN_MODE == 'pr') { bat 'call npm.cmd run ci:pr:scan' }
+                    else { bat 'call npm.cmd run ci:sast' }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/sast/*', fingerprint: true
+                }
+            }
+        }
+
+        stage('Quality Checks') {
+            when { expression { env.CI_RUN_MODE == 'full' } }
+            steps {
+                bat '''
+                    call npm.cmd run lint
+                    if errorlevel 1 exit /b 1
+
+                    call npm.cmd run typecheck
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+        }
+
+        stage('Supabase Configuration') {
+            when { expression { env.CI_RUN_MODE == 'full' } }
+            steps {
+                bat '''
+                    @echo off
+                    call npm.cmd run supabase:check -- --mode=production
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+        }
+
+        stage('Auth Module Tests') {
+            when { expression { env.CI_RUN_MODE == 'full' } }
+            steps {
+                bat '''
+                    @echo off
+                    call npm.cmd run test:auth
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+        }
+
+        stage('STRIDE Database') {
+            when {
+                allOf {
+                    expression { env.CI_RUN_MODE == 'full' }
+                    expression { params.RUN_STRIDE_DATABASE }
+                    branch 'development'
+                    not { changeRequest() }
+                }
+            }
+            options { timeout(time: 5, unit: 'MINUTES') }
+            steps {
+                // Only generated reports are cleared; credential errors must not publish stale results.
+                dir('reports/stride') { deleteDir() }
+                withCredentials([string(credentialsId: 'supabase-stride-database-url', variable: 'STRIDE_DATABASE_URL')]) {
+                    withEnv(["STRIDE_DB_HOST=${params.STRIDE_DB_HOST}", 'STRIDE_ALLOW_TEST_WRITES=rollback-only']) {
+                        bat '''
+                            @echo off
+                            call npm.cmd run ci:stride
+                            if errorlevel 1 exit /b 1
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/stride/*', fingerprint: true
+                }
+            }
+        }
+
+        stage('Build') {
+            when { expression { env.CI_RUN_MODE == 'full' } }
+            steps {
+                bat '''
+                    call npm.cmd run build
+                    if errorlevel 1 exit /b 1
+                '''
+
+            }
+        }
+
+        stage('DAST Staging') {
+            when { expression { env.CI_RUN_MODE == 'full' } }
+            options { timeout(time: 12, unit: 'MINUTES') }
+            steps {
+                bat '''
+                    @echo off
+                    call npm.cmd run ci:dast:setup
+                    if errorlevel 1 exit /b 1
+                    call npm.cmd run ci:dast
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/dast/summary.json,reports/dast/summary.txt',
+                        allowEmptyArchive: true, fingerprint: true
+                }
+            }
+        }
+
+        stage('Operations Drill') {
+            when { expression { env.CI_RUN_MODE == 'full' } }
+            steps { bat 'call npm.cmd run ops:drill' }
+            post { always { archiveArtifacts artifacts: 'reports/ops/*', allowEmptyArchive: true, fingerprint: true } }
+        }
+
+        stage('Archive Build') {
+            when { expression { env.CI_RUN_MODE == 'full' } }
+            steps {
+                script {
+                    if ((params.PROOF_GATE ?: 'none') != 'none') {
+                        error('Proof tidak terblokir oleh scanner. Artifact tidak boleh dipromosikan.')
+                    }
+                }
+                archiveArtifacts artifacts: 'dist/**',
+                    fingerprint: true
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                if (env.CI_RUN_MODE == 'pr') {
+                    if (env.PR_SCAN_REQUIRED == 'true') { bat 'node scripts/pr/finalize.mjs' }
+                    archiveArtifacts artifacts: 'reports/pr/plan.json,reports/pr/summary.json', allowEmptyArchive: true, fingerprint: true
+                }
+                if (fileExists('scripts/ci/proof-fixture.mjs')) {
+                    bat 'node scripts/ci/proof-fixture.mjs clean'
+                }
+            }
+        }
+    }
+}

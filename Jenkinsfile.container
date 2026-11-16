@@ -1,0 +1,51 @@
+// Future Windows Docker agent only; do not run on the current host without Docker.
+pipeline {
+    agent { label 'windows-docker' }
+    options { skipDefaultCheckout(true); timestamps(); disableConcurrentBuilds(); timeout(time: 25, unit: 'MINUTES') }
+    parameters {
+        string(name: 'SUPABASE_URL', defaultValue: '', trim: true)
+        string(name: 'SUPABASE_PUBLIC_KEY', defaultValue: '', trim: true)
+    }
+    environment {
+        VITE_SUPABASE_URL = "${params.SUPABASE_URL}"
+        VITE_SUPABASE_ANON_KEY = "${params.SUPABASE_PUBLIC_KEY}"
+        IMAGE_TAR = '.runtime/images/frontend.tar'
+    }
+    stages {
+        stage('Checkout') { steps { checkout scm } }
+        stage('Prerequisites') {
+            steps {
+                bat '''
+                    @echo off
+                    docker version
+                    if errorlevel 1 exit /b 1
+                    call npm.cmd ci --no-audit --no-fund
+                    if errorlevel 1 exit /b 1
+                    call npm.cmd run supabase:check -- --mode=production
+                    if errorlevel 1 exit /b 1
+                    call npm.cmd run ci:infra:setup
+                    if errorlevel 1 exit /b 1
+                    call npm.cmd run ci:infra
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+        }
+        stage('Build Exact Image') {
+            steps {
+                dir('.runtime/images') { deleteDir() }
+                bat '''
+                    @echo off
+                    docker build --build-arg VITE_SUPABASE_URL --build-arg VITE_SUPABASE_ANON_KEY -f frontend/Dockerfile -t reservasi-frontend:%BUILD_NUMBER% .
+                    if errorlevel 1 exit /b 1
+                    docker save -o .runtime/images/frontend.tar reservasi-frontend:%BUILD_NUMBER%
+                    if errorlevel 1 exit /b 1
+                '''
+            }
+        }
+        stage('Scan Image Before Release') {
+            steps { bat 'call npm.cmd run ci:image' }
+            post { always { archiveArtifacts artifacts: 'reports/image/summary.json', allowEmptyArchive: true, fingerprint: true } }
+        }
+    }
+    post { always { dir('.runtime/images') { deleteDir() } } }
+}
