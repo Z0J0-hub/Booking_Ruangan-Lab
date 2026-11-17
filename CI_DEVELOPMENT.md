@@ -1,5 +1,8 @@
 # CI Development - Supabase
 
+Alur aktif sekarang: [PR-only](PR_ONLY.md). Konfigurasi multi-mode di bawah adalah
+catatan historis; tidak lagi dipakai sebagai form/tahap Jenkins aktif.
+
 Sejak konsolidasi 16 November, semua pemeriksaan Windows dan proof fail-fast
 dijalankan dari reservasi-pipeline / Jenkinsfile.dev. Form build terbaru memakai
 PILIH_PEMERIKSAAN, bukan RUN_MODE/PROOF_GATE. Ikuti [panduan form terbaru](PR_OWASP_2025.md)

@@ -1,395 +1,76 @@
-pipeline {
-    agent any
-
-    options {
-        timestamps()
-        skipDefaultCheckout(true)
-        disableConcurrentBuilds()
-        timeout(time: 30, unit: 'MINUTES')
-        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10'))
-    }
-
-    // Poll changed PRs into development from any branch in the same repository.
-    // The controller pins this pipeline/tooling to a reviewed commit; PR source is data only.
-    triggers { cron('H/5 * * * *') }
-
-    parameters {
-        choice(name: 'PILIH_PEMERIKSAAN', choices: [
-            'Periksa PR menuju development',
-            'Periksa kode branch ilyas terbaru',
-            'Coba alat pendeteksi: contoh masalah OWASP'
-        ], description: 'PR: periksa kode (SAST) dan kerentanan paket pendukung pada gabungan PR dengan development. Branch ilyas terbaru: ambil kode terbaru yang sudah di-push ke ilyas saat tahap pengambilan kode; jalankan pemeriksaan, build, dan uji lokal. Perubahan yang belum di-push tidak ikut. Percobaan OWASP: hanya contoh masalah untuk mencoba alat, bukan aplikasi. Tidak deploy produksi.')
-        string(name: 'NOMOR_PR', defaultValue: '', trim: true, description: 'Hanya untuk Periksa PR. Isi nomor PR terbuka yang tujuannya development, dari branch mana pun dalam repo yang sama; kosong = cari otomatis. PR ke main belum didukung.')
-        booleanParam(name: 'PERIKSA_ULANG_PR', defaultValue: true, description: 'Hanya untuk Periksa PR manual: periksa lagi meskipun kodenya belum berubah. Jadwal otomatis hanya memeriksa perubahan baru.')
-        string(name: 'SUPABASE_URL', defaultValue: params.SUPABASE_URL ?: env.CI_SUPABASE_URL ?: '', trim: true,
-            description: 'Pengaturan aplikasi tersimpan. Biarkan nilainya; dipakai saat memeriksa kode branch ilyas terbaru.')
-        string(name: 'SUPABASE_PUBLIC_KEY', defaultValue: params.SUPABASE_PUBLIC_KEY ?: env.CI_SUPABASE_PUBLIC_KEY ?: '', trim: true,
-            description: 'Kunci publik aplikasi tersimpan. Biarkan nilainya; jangan isi password atau kunci rahasia.')
-    }
-
-    environment {
-        VITE_SUPABASE_URL = "${params.SUPABASE_URL ?: env.CI_SUPABASE_URL ?: ''}"
-        VITE_SUPABASE_ANON_KEY = "${params.SUPABASE_PUBLIC_KEY ?: env.CI_SUPABASE_PUBLIC_KEY ?: ''}"
-    }
-
-    stages {
-
-        stage('Cek Lingkungan') {
-            steps {
-                script {
-                    if (isUnix()) { error('Jenkinsfile.dev requires a Windows agent.') }
-                    def timer = !currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause').isEmpty()
-                    def pilihan = params.PILIH_PEMERIKSAAN ?: 'Periksa PR menuju development'
-                    def modes = ['Periksa PR menuju development': 'pr', 'Periksa kode branch ilyas terbaru': 'full', 'Coba alat pendeteksi: contoh masalah OWASP': 'demo']
-                    if (!modes.containsKey(pilihan)) { error('Pilihan pemeriksaan tidak dikenal.') }
-                    env.CI_RUN_MODE = timer ? 'pr' : modes[pilihan]
-                    env.PROOF_GATE = env.CI_RUN_MODE == 'demo' ? 'owasp' : 'none'
-                    env.PR_NUMBER = timer ? '' : (params.NOMOR_PR ?: '')
-                    env.PR_FORCE_RESCAN = !timer && params.PERIKSA_ULANG_PR ? 'true' : 'false'
-                    env.RUN_STRIDE_DATABASE = 'false'
-                    env.PR_SCAN_REQUIRED = 'false'
-                }
-                bat '''
-                    whoami
-                    hostname
-
-                    node --version
-                    if errorlevel 1 exit /b 1
-
-                    call npm.cmd --version
-                    if errorlevel 1 exit /b 1
-
-                    git --version
-                    if errorlevel 1 exit /b 1
-                '''
-            }
-        }
-
-        stage('Checkout') {
-            steps {
-                script {
+// PR-only pipeline. No branch build, OWASP demonstration, deployment or DAST.
+properties([
+    disableConcurrentBuilds(),
+    buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10')),
+    pipelineTriggers([cron('H/5 * * * *')]),
+    parameters([
+        string(name: 'NOMOR_PR', defaultValue: '', trim: true, description: 'PR terbuka menuju development dari repo tim. Kosong = cari otomatis. Kode yang diperiksa adalah gabungan PR dan development.'),
+        booleanParam(name: 'PERIKSA_ULANG_PR', defaultValue: true, description: 'Periksa lagi PR saat build manual, meskipun kodenya belum berubah. Jadwal otomatis hanya memeriksa perubahan baru.'),
+        string(name: 'SUPABASE_URL', defaultValue: params.SUPABASE_URL ?: env.CI_SUPABASE_URL ?: '', trim: true, description: 'Pengaturan publik untuk build. Biarkan nilai yang sudah tersimpan.'),
+        string(name: 'SUPABASE_PUBLIC_KEY', defaultValue: params.SUPABASE_PUBLIC_KEY ?: env.CI_SUPABASE_PUBLIC_KEY ?: '', trim: true, description: 'Kunci publik untuk build; jangan isi password atau kunci rahasia.')
+    ])
+])
+node {
+    timestamps {
+        timeout(time: 30, unit: 'MINUTES') {
+            def selected = false
+            try {
+                stage('Siapkan pipeline') {
+                    if (isUnix()) { error('Job ini memerlukan agent Windows.') }
                     def checked = checkout scm
                     env.GIT_COMMIT = checked.GIT_COMMIT
-                    if (!(env.GIT_COMMIT ?: '').matches('[a-f0-9]{40}')) { error('Trusted checkout did not return an exact revision.') }
-                    env.PIPELINE_COMMIT = env.GIT_COMMIT
-                    currentBuild.description = env.CI_RUN_MODE == 'pr' ? 'Cari PR menuju development (branch asal bebas dalam repo)' : env.CI_RUN_MODE == 'demo'
-                        ? 'Percobaan alat: contoh OWASP, bukan aplikasi'
-                        : 'Mengambil kode branch ilyas terbaru dari GitHub'
-                    echo "Versi pengaturan pipeline Jenkins: ${env.PIPELINE_COMMIT}."
-                    echo env.CI_RUN_MODE == 'pr' ? 'Kode yang diperiksa: gabungan branch asal PR dan development; nama branch, nomor PR, dan versi kode dicatat pada laporan PR.' : env.CI_RUN_MODE == 'demo' ? 'Yang diperiksa hanya contoh kode bermasalah; aplikasi tidak dibangun atau dijalankan.' : 'Kode aplikasi akan diambil dari ujung branch ilyas terbaru, terpisah dari versi pengaturan pipeline.'
+                    if (!(env.GIT_COMMIT ?: '').matches('[a-f0-9]{40}')) { error('Versi pipeline tidak valid.') }
+                    bat 'node scripts/pr/cleanup.mjs'
+                    dir('reports') { deleteDir() }
+                    def timer = !currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause').isEmpty()
+                    env.PR_NUMBER = timer ? '' : (params.NOMOR_PR ?: '')
+                    env.PR_FORCE_RESCAN = !timer && params.PERIKSA_ULANG_PR ? 'true' : 'false'
+                    env.CI_RUN_MODE = 'pr'
+                    env.VITE_SUPABASE_URL = params.SUPABASE_URL ?: env.CI_SUPABASE_URL ?: ''
+                    env.VITE_SUPABASE_ANON_KEY = params.SUPABASE_PUBLIC_KEY ?: env.CI_SUPABASE_PUBLIC_KEY ?: ''
                 }
-                dir('reports') { deleteDir() }
-                bat 'node scripts/ci/proof-fixture.mjs clean'
-
-                bat '''
-                    git rev-parse --verify HEAD
-                    if errorlevel 1 exit /b 1
-
-                    git log -1 --oneline
-                    if errorlevel 1 exit /b 1
-                '''
-            }
-        }
-
-        stage('Ambil kode branch ilyas terbaru') {
-            when { expression { env.CI_RUN_MODE == 'full' } }
-            steps {
-                script {
-                    // Explicitly fetch the selected trusted team branch. The pipeline
-                    // definition remains pinned; PR mode never executes this checkout.
-                    def source = checkout([$class: 'GitSCM',
-                        branches: [[name: 'refs/remotes/origin/ilyas']],
-                        userRemoteConfigs: [[url: 'https://github.com/Z0J0-hub/Booking_Ruangan-Lab.git',
-                            refspec: '+refs/heads/ilyas:refs/remotes/origin/ilyas']],
-                        extensions: [[$class: 'CloneOption', shallow: false, noTags: true, honorRefspec: true]]])
-                    env.GIT_COMMIT = source.GIT_COMMIT
-                    if (!(env.GIT_COMMIT ?: '').matches('[a-f0-9]{40}')) { error('Tidak berhasil memastikan versi kode branch ilyas. Pemeriksaan dihentikan.') }
-                    def fetched = bat(returnStdout: true, script: '@echo off\ngit rev-parse refs/remotes/origin/ilyas').trim()
-                    if (fetched != env.GIT_COMMIT) { error('Kode yang diambil tidak sama dengan ujung branch ilyas. Pemeriksaan dihentikan.') }
-                    currentBuild.description = "Branch ilyas terbaru: ${env.GIT_COMMIT.take(8)}"
-                    echo "Kode yang diperiksa: branch ilyas, versi ${env.GIT_COMMIT}, dari GitHub saat pengambilan kode."
-                    writeFile file: 'reports/source/summary.json', text: """{
-  "mode": "latest-branch",
-  "repository": "Z0J0-hub/Booking_Ruangan-Lab",
-  "branch": "ilyas",
-  "commit": "${env.GIT_COMMIT}",
-  "pipelineCommit": "${env.PIPELINE_COMMIT}"
-}
-"""
-                    writeFile file: 'reports/source/summary.txt', text: "Kode yang diperiksa: branch ilyas terbaru saat pengambilan kode.\nVersi kode: ${env.GIT_COMMIT}\nVersi pengaturan pipeline: ${env.PIPELINE_COMMIT}\nPerubahan lokal yang belum di-push tidak ikut. Commit yang masuk setelah pengambilan kode ikut build berikutnya.\n"
-                }
-                bat 'node scripts/ci/proof-fixture.mjs clean'
-            }
-            post { always { archiveArtifacts artifacts: 'reports/source/*', allowEmptyArchive: true, fingerprint: true } }
-        }
-
-        stage('Cari PR menuju development') {
-            when { expression { env.CI_RUN_MODE == 'pr' } }
-            steps {
-                script {
+                stage('Cari PR menuju development') {
                     def code = bat(returnStatus: true, script: '@echo off\nnode scripts/pr/plan.mjs')
+                    currentBuild.description = bat(returnStdout: true, script: '@echo off\nnode scripts/pr/plan.mjs --describe').trim()
                     if (code == 3) {
                         currentBuild.result = 'NOT_BUILT'
-                    } else if (code != 0) {
-                        error('Tidak bisa memeriksa PR. Pastikan nomor PR benar, masih terbuka, tujuannya development, dan branch asal berada dalam repo yang sama. Lihat reports/pr/plan.json untuk rincian.')
-                    } else { env.PR_SCAN_REQUIRED = 'true' }
-                    currentBuild.description = bat(returnStdout: true, script: '@echo off\nnode scripts/pr/plan.mjs --describe').trim()
-                }
-            }
-        }
-
-        stage('Pipeline Policy') {
-            when { expression { env.CI_RUN_MODE != 'pr' || env.PR_SCAN_REQUIRED == 'true' } }
-            steps {
-                // Remove generated reports from older runs on reused agents.
-                // Also remove a fixture left by an interrupted proof before scanning source.
-                bat 'node scripts/ci/proof-fixture.mjs clean'
-                withEnv(['RUN_STRIDE_DATABASE=false', "PROOF_GATE=${env.PROOF_GATE}", "CHANGE_TARGET=${env.CI_RUN_MODE == 'pr' ? 'development' : env.CHANGE_TARGET ?: ''}"]) {
-                    bat 'node scripts/ci/policy.mjs'
-                }
-            }
-        }
-
-        stage('Install Dependencies') {
-            when { expression { env.CI_RUN_MODE != 'pr' || env.PR_SCAN_REQUIRED == 'true' } }
-            steps {
-                bat '''
-                    call npm.cmd ci --no-audit --no-fund
-                    if errorlevel 1 exit /b 1
-                '''
-
-            }
-        }
-
-        stage('SAST Toolchain') {
-            when { expression { env.CI_RUN_MODE != 'pr' || env.PR_SCAN_REQUIRED == 'true' } }
-            steps { bat 'call npm.cmd run ci:sast:setup' }
-        }
-
-        stage('Infrastructure Configuration') {
-            when { expression { env.CI_RUN_MODE == 'full' } }
-            steps {
-                bat '''
-                    @echo off
-                    call npm.cmd run ci:infra:setup
-                    if errorlevel 1 exit /b 1
-                    call npm.cmd run ci:infra
-                    if errorlevel 1 exit /b 1
-                '''
-            }
-            post { always { archiveArtifacts artifacts: 'reports/infra/summary.json', allowEmptyArchive: true, fingerprint: true } }
-        }
-
-        stage('CI Module Tests') {
-            when { expression { env.CI_RUN_MODE != 'pr' || env.PR_SCAN_REQUIRED == 'true' } }
-            steps {
-                bat '''
-                    @echo off
-                    call npm.cmd run test:ci
-                    if errorlevel 1 exit /b 1
-                '''
-            }
-        }
-
-        stage('Siapkan contoh OWASP - bukan aplikasi') {
-            when { expression { env.CI_RUN_MODE == 'demo' } }
-            steps {
-                withEnv(['PROOF_GATE=owasp']) {
-                    bat '''
-                        @echo off
-                        node scripts/ci/proof-fixture.mjs %PROOF_GATE%
-                        if errorlevel 1 exit /b 1
-                    '''
-                }
-            }
-        }
-
-        stage('Secret Scan') {
-            when { expression { env.CI_RUN_MODE == 'full' } }
-            steps {
-                bat '''
-                    @echo off
-                    call npm.cmd run ci:secrets
-                    if errorlevel 1 exit /b 1
-                    call npm.cmd run test:secret-gate
-                    if errorlevel 1 exit /b 1
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'reports/secrets/*',
-                        fingerprint: true
-                }
-            }
-        }
-
-        stage('Audit Dependency Branch') {
-            when { expression { env.CI_RUN_MODE == 'full' } }
-            steps {
-                bat '''
-                    @echo off
-                    call npm.cmd run ci:audit
-                    if errorlevel 1 exit /b 1
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'reports/audit/*',
-                        fingerprint: true
-                }
-            }
-        }
-
-        stage('SAST dan Audit Dependency PR') {
-            when { expression { env.CI_RUN_MODE == 'pr' && env.PR_SCAN_REQUIRED == 'true' } }
-            steps { bat 'call npm.cmd run ci:pr:scan' }
-            post { always { archiveArtifacts artifacts: 'reports/sast/*,reports/audit/*', allowEmptyArchive: true, fingerprint: true } }
-        }
-
-        stage('SAST') {
-            when { expression { env.CI_RUN_MODE != 'pr' } }
-            steps {
-                script {
-                    if (env.CI_RUN_MODE == 'demo') {
-                        bat 'node scripts/ci/owasp-demo.mjs'
-                        currentBuild.description = 'Percobaan BERHASIL: contoh masalah 10/10 kelompok OWASP terdeteksi dan ditolak; bukan hasil aplikasi'
+                        echo 'Tidak ada PR baru yang perlu diperiksa; proses selesai di sini.'
+                        return
                     }
-                    else { bat 'call npm.cmd run ci:sast' }
+                    if (code != 0) { error('PR tidak dapat dipilih; lihat reports/pr/plan.json.') }
+                    selected = true
                 }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'reports/sast/*', fingerprint: true
+                stage('Siapkan alat pemeriksa') {
+                    bat '''@echo off
+call npm.cmd ci --no-audit --no-fund
+if errorlevel 1 exit /b 1
+call npm.cmd run ci:sast:setup
+if errorlevel 1 exit /b 1
+call npm.cmd run ci:infra:setup
+if errorlevel 1 exit /b 1
+'''
                 }
-            }
-        }
-
-        stage('Quality Checks') {
-            when { expression { env.CI_RUN_MODE == 'full' } }
-            steps {
-                bat '''
-                    call npm.cmd run lint
-                    if errorlevel 1 exit /b 1
-
-                    call npm.cmd run typecheck
-                    if errorlevel 1 exit /b 1
-                '''
-            }
-        }
-
-        stage('Supabase Configuration') {
-            when { expression { env.CI_RUN_MODE == 'full' } }
-            steps {
-                bat '''
-                    @echo off
-                    call npm.cmd run supabase:check -- --mode=production
-                    if errorlevel 1 exit /b 1
-                '''
-            }
-        }
-
-        stage('Auth Module Tests') {
-            when { expression { env.CI_RUN_MODE == 'full' } }
-            steps {
-                bat '''
-                    @echo off
-                    call npm.cmd run test:auth
-                    if errorlevel 1 exit /b 1
-                '''
-            }
-        }
-
-        stage('STRIDE Database') {
-            when {
-                allOf {
-                    expression { env.CI_RUN_MODE == 'full' }
-                    expression { env.RUN_STRIDE_DATABASE == 'true' }
-                    branch 'development'
-                    not { changeRequest() }
-                }
-            }
-            options { timeout(time: 5, unit: 'MINUTES') }
-            steps {
-                // Only generated reports are cleared; credential errors must not publish stale results.
-                dir('reports/stride') { deleteDir() }
-                withCredentials([string(credentialsId: 'supabase-stride-database-url', variable: 'STRIDE_DATABASE_URL')]) {
-                    withEnv(["STRIDE_DB_HOST=${params.STRIDE_DB_HOST}", 'STRIDE_ALLOW_TEST_WRITES=rollback-only']) {
-                        bat '''
-                            @echo off
-                            call npm.cmd run ci:stride
-                            if errorlevel 1 exit /b 1
-                        '''
+                stage('Ambil kode PR') { bat 'node scripts/pr/check.mjs prepare' }
+                stage('Infrastructure Configuration') { bat 'node scripts/pr/check.mjs infra' }
+                stage('Dependency Audit') { bat 'node scripts/pr/check.mjs audit' }
+                stage('SAST OWASP Top 10') { bat 'node scripts/pr/check.mjs sast' }
+                stage('Build development') { bat 'node scripts/pr/check.mjs build' }
+                stage('STRIDE Database') {
+                    withCredentials([string(credentialsId: 'supabase-stride-database-url', variable: 'STRIDE_DATABASE_URL')]) {
+                        withEnv(['CHANGE_TARGET=development', 'PROOF_GATE=none', 'RUN_STRIDE_DATABASE=true', 'STRIDE_RUNNER_TRUSTED=true', 'STRIDE_DB_HOST=aws-0-ap-southeast-1.pooler.supabase.com', 'STRIDE_ALLOW_TEST_WRITES=rollback-only', 'STRIDE_CA_FILE=security/certificates/prod-ca-2021.crt']) {
+                            bat '''@echo off
+node scripts/ci/policy.mjs
+if errorlevel 1 exit /b 1
+node scripts/pr/check.mjs stride
+'''
+                        }
                     }
                 }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'reports/stride/*', fingerprint: true
-                }
-            }
-        }
-
-        stage('Build') {
-            when { expression { env.CI_RUN_MODE == 'full' } }
-            steps {
-                bat '''
-                    call npm.cmd run build
-                    if errorlevel 1 exit /b 1
-                '''
-
-            }
-        }
-
-        stage('DAST Staging') {
-            when { expression { env.CI_RUN_MODE == 'full' } }
-            options { timeout(time: 12, unit: 'MINUTES') }
-            steps {
-                bat '''
-                    @echo off
-                    call npm.cmd run ci:dast:setup
-                    if errorlevel 1 exit /b 1
-                    call npm.cmd run ci:dast
-                    if errorlevel 1 exit /b 1
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'reports/dast/summary.json,reports/dast/summary.txt',
-                        allowEmptyArchive: true, fingerprint: true
-                }
-            }
-        }
-
-        stage('Operations Drill') {
-            when { expression { env.CI_RUN_MODE == 'full' } }
-            steps { bat 'call npm.cmd run ops:drill' }
-            post { always { archiveArtifacts artifacts: 'reports/ops/*', allowEmptyArchive: true, fingerprint: true } }
-        }
-
-        stage('Archive Build') {
-            when { expression { env.CI_RUN_MODE == 'full' } }
-            steps {
-                script {
-                    if ((env.PROOF_GATE ?: 'none') != 'none') {
-                        error('Proof tidak terblokir oleh scanner. Artifact tidak boleh dipromosikan.')
-                    }
-                }
-                archiveArtifacts artifacts: 'dist/**',
-                    fingerprint: true
-            }
-        }
-    }
-
-    post {
-        always {
-            script {
-                if (env.CI_RUN_MODE == 'pr') {
-                    if (env.PR_SCAN_REQUIRED == 'true') { bat 'node scripts/pr/finalize.mjs' }
-                    archiveArtifacts artifacts: 'reports/pr/plan.json,reports/pr/summary.json', allowEmptyArchive: true, fingerprint: true
-                }
-                if (fileExists('scripts/ci/proof-fixture.mjs')) {
-                    bat 'node scripts/ci/proof-fixture.mjs clean'
-                }
+                stage('Simpan hasil PR') { bat 'node scripts/pr/check.mjs complete' }
+            } finally {
+                if (selected && fileExists('reports/pr/summary.json')) { bat 'node scripts/pr/finalize.mjs' }
+                archiveArtifacts artifacts: 'reports/pr/*.json,reports/infra/*,reports/audit/*,reports/sast/*,reports/build/**,reports/stride/*', allowEmptyArchive: true, fingerprint: true
+                if (fileExists('scripts/pr/cleanup.mjs')) { bat 'node scripts/pr/cleanup.mjs' }
             }
         }
     }

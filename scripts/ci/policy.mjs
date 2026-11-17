@@ -1,8 +1,8 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// PR source is untrusted, including same-repository PRs. Database credentials
-// belong only to the reviewed development branch, never to a change request.
+// PR source is untrusted. A pinned runner may test the approved development DB;
+// PR code, SQL and build processes must never receive its credentials.
 export function validatePipelinePolicy(env = process.env) {
   const changeRequest = env.CI_RUN_MODE === 'pr' || Boolean(env.CHANGE_ID) || /^PR-/i.test(env.BRANCH_NAME || '');
   if (changeRequest && env.CHANGE_TARGET !== 'development') {
@@ -14,8 +14,10 @@ export function validatePipelinePolicy(env = process.env) {
   if (proof !== 'none' && (changeRequest || databaseRequested)) {
     throw new Error('Synthetic fail-fast proofs are manual source-only runs, without database tests or PR context.');
   }
-  if (databaseRequested && (changeRequest || env.BRANCH_NAME !== 'development')) {
-    throw new Error('Database tests require the trusted development branch, not a PR or a classic job without branch identity.');
+  const trustedPrDatabase = changeRequest && env.STRIDE_RUNNER_TRUSTED === 'true' && env.STRIDE_ALLOW_TEST_WRITES === 'rollback-only' &&
+    env.STRIDE_DB_HOST === 'aws-0-ap-southeast-1.pooler.supabase.com';
+  if (databaseRequested && (changeRequest ? !trustedPrDatabase : env.BRANCH_NAME !== 'development')) {
+    throw new Error('Database tests require the approved trusted rollback-only runner; PR code must never execute with DB credentials.');
   }
   return { changeRequest, databaseRequested };
 }

@@ -11,7 +11,7 @@
     "ci:sast": "node scripts/ci/sast.mjs",
     "ci:sast:setup": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/sast/setup-semgrep.ps1",
     "ci:pr:plan": "node scripts/pr/plan.mjs",
-    "ci:pr:scan": "node scripts/pr/scan.mjs",
+    "ci:pr:check": "node scripts/pr/check.mjs",
     "ci:dast:setup": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/dast/setup-zap.ps1",
     "ci:dast": "node scripts/dast/run.mjs",
     "staging": "node scripts/dast/staging.mjs",

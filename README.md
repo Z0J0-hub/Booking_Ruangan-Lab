@@ -1,5 +1,10 @@
 # Reservasi Ruangan Perpustakaan
 
+**Alur Jenkins aktif sekarang hanya PR menuju development.** Ikuti
+[PR_ONLY.md](PR_ONLY.md) untuk tahap, parameter, batas build yang direview, dan
+tes STRIDE rollback-only. Pilihan branch, percobaan OWASP dan DAST sudah dihapus
+dari job aktif; catatan mode sebelumnya di bawah adalah riwayat konfigurasi.
+
 Pembaruan PR development + SAST OWASP 2025: [PR_OWASP_2025.md](PR_OWASP_2025.md).
 Mode PR memakai polling metadata GitHub dan memindai source PR sebagai data.
 PR menuju development juga diaudit paket frontend-nya dari lockfile merge yang sama,

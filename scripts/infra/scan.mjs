@@ -47,9 +47,9 @@ export function trivyFindings(raw, mode) {
   return { checks, findings };
 }
 
-export function runInfra(mode = 'config') {
+export function runInfra(mode = 'config', { sourceRoot = root } = {}) {
   if (!['config', 'image'].includes(mode)) throw new Error('INVALID_SCAN_MODE');
-  const directory = path.join(root, 'reports', mode === 'config' ? 'infra' : 'image'); mkdirSync(directory, { recursive: true });
+  const directory = path.join(sourceRoot, 'reports', mode === 'config' ? 'infra' : 'image'); mkdirSync(directory, { recursive: true });
   const report = { status: 'error', exitCode: 2, tool: 'Trivy 0.76.2 + project Compose policy', mode, checks: 0, findings: [],
     scope: mode === 'config' ? 'Active frontend Dockerfile and Compose project policy; not full CIS compliance' : 'Exact exported application image archive; HIGH/CRITICAL gate',
     sourceDigest: process.env.CI_SOURCE_DIGEST || null, buildUrl: process.env.BUILD_URL || null };
@@ -61,13 +61,13 @@ export function runInfra(mode = 'config') {
     let args;
     if (mode === 'config') {
       const input = path.join(scratch, 'source'); mkdirSync(input);
-      copyFileSync(path.join(root, 'frontend', 'Dockerfile'), path.join(input, 'Dockerfile'));
+      copyFileSync(path.join(sourceRoot, 'frontend', 'Dockerfile'), path.join(input, 'Dockerfile'));
       args = ['config', '--skip-check-update', '--include-non-failures', '--misconfig-scanners', 'dockerfile', input];
       for (const name of ['docker-compose.yml', 'docker-compose.staging.yml', 'docker-compose.prod.yml']) {
-        const policy = composeFindings(readFileSync(path.join(root, name), 'utf8'), name);
+        const policy = composeFindings(readFileSync(path.join(sourceRoot, name), 'utf8'), name);
         report.checks += policy.checks; report.findings.push(...policy.findings);
       }
-      const ignore = readFileSync(path.join(root, '.dockerignore'), 'utf8').split(/\r?\n/);
+      const ignore = readFileSync(path.join(sourceRoot, '.dockerignore'), 'utf8').split(/\r?\n/);
       for (const required of ['.git', '.env', '.env.*', '*.local.json', '.runtime']) {
         report.checks++;
         if (!ignore.includes(required)) report.findings.push({ file: '.dockerignore', rule: 'EXCLUDE_' + required, severity: 'HIGH' });
