@@ -1,5 +1,4 @@
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { projectRoot } from './plan.mjs';
@@ -22,9 +21,9 @@ export function validateReviewedBuild(source, files, trustedRoot = projectRoot) 
   for (const name of actual) {
     const input = path.join(source, name);
     if (!lstatSync(input).isFile() || lstatSync(input).isSymbolicLink()) throw new Error('UNSAFE_BUILD_INPUT');
-    const bytes = readFileSync(input);
-    const blob = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
-    if (blob !== approvedBlobs.get(name)) throw new Error('BUILD_SOURCE_REVIEW_REQUIRED');
+    const hash = spawnSync('git', ['hash-object', '--no-filters', '--stdin'], { cwd: trustedRoot, input: readFileSync(input),
+      encoding: 'utf8', windowsHide: true, timeout: 10_000 });
+    if (hash.status !== 0 || hash.error || hash.stdout.trim() !== approvedBlobs.get(name)) throw new Error('BUILD_SOURCE_REVIEW_REQUIRED');
   }
 }
 export function runPrBuild({ source, files, provenance }) {
