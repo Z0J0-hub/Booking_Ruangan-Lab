@@ -30,3 +30,11 @@ test('console summaries omit raw source/secret fields and strip control characte
   const many = auditConsole({ status: 'blocked', vulnerabilities: {}, findings: Array.from({ length: 25 }, (_, i) => ({ package: 'pkg-' + i, severity: 'high' })) });
   assert.ok(many.includes('Ada 5 paket lain')); assert.ok(many.includes('laporan lengkap'));
 });
+
+test('audit timeout console explains the cause and records attempts without raw error details', () => {
+  const text = auditConsole({ status: 'error', code: 'PR_AUDIT_TIMEOUT', limits: { maxAttempts: 2 },
+    attempts: [{ attempt: 1, status: 'error', code: 'PR_AUDIT_TIMEOUT', elapsedMs: 90000 }, { attempt: 2, status: 'error', code: 'PR_AUDIT_TIMEOUT', elapsedMs: 90000 }],
+    vulnerabilities: {}, findings: [], stderr: 'private stderr' });
+  assert.ok(text.includes('Batas waktu audit tercapai')); assert.ok(text.includes('2/2'));
+  assert.ok(text.includes('Percobaan 2')); assert.equal(text.includes('private stderr'), false);
+});

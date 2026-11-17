@@ -65,6 +65,19 @@ Ringkasan yang sama disimpan sebagai `reports/audit/ringkasan.txt` dan
 credential, atau output mentah scanner. Entri paket pada lockfile mencakup paket
 opsional/tidak langsung dan bukan jumlah paket yang dipasang.
 
+Cache metadata npm disimpan di `.tools/npm-audit-cache-v1` antar-build agar tidak
+mengunduh semuanya dari awal. Opsi `--prefer-online` tetap memeriksa data terbaru;
+hasil audit sebelumnya tidak dipakai untuk meloloskan PR. Pengisian awal bisa lebih lama.
+Audit membatasi setiap permintaan jaringan npm hingga 60 detik dan setiap proses
+audit hingga 240 detik. Timeout, gangguan koneksi/DNS sementara, HTTP 429 dan 5xx
+dicoba ulang satu kali setelah 2 detik (maksimal 2 percobaan keseluruhan).
+Retry internal npm dimatikan agar tidak menumpuk waktu tunggu tersembunyi.
+Console/laporan mencatat percobaan dan alasan dalam bahasa Indonesia.
+Jika kedua percobaan gagal, build tetap gagal dan tidak mengklaim nol kerentanan.
+Temuan tinggi/kritis, error TLS, proses yang dihentikan, dan laporan tidak valid
+tidak dicoba ulang agar masalah keamanan/data tidak disembunyikan.
+Konfigurasi ini mengikuti opsi [fetch-timeout dan fetch-retries npm](https://docs.npmjs.com/cli/v11/using-npm/config/#fetch-timeout).
+
 Pada nomor build, buka **Artifacts**:
 
 - reports/pr/summary.json: nomor PR, branch asal/tujuan, head/base/merge, versi alat,

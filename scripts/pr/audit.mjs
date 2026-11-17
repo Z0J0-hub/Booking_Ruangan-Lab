@@ -1,10 +1,43 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync, lstatSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { projectRoot } from './plan.mjs';
 
 const levels = ['info', 'low', 'moderate', 'high', 'critical'];
 const dependencyFields = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+export const auditLimits = { requestTimeoutMs: 60_000, processTimeoutMs: 240_000, maxAttempts: 2, retryDelayMs: 2000 };
+export function ensureAuditCache(toolsRoot = path.join(projectRoot, '.tools')) {
+  mkdirSync(toolsRoot, { recursive: true });
+  const directory = path.join(toolsRoot, 'npm-audit-cache-v1');
+  mkdirSync(directory, { recursive: true });
+  if (lstatSync(directory).isSymbolicLink() || path.relative(realpathSync(toolsRoot), realpathSync(directory)) !== 'npm-audit-cache-v1') throw new Error('UNSAFE_AUDIT_CACHE');
+  return directory;
+}
+const retryableCodes = new Set(['PR_AUDIT_TIMEOUT', 'PR_AUDIT_NETWORK_ERROR', 'PR_AUDIT_REGISTRY_UNAVAILABLE']);
+const networkCodes = new Set(['ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH', 'EPIPE']);
+const timeoutCodes = new Set(['ETIMEDOUT', 'ESOCKETTIMEDOUT', 'ERR_SOCKET_TIMEOUT']);
+const tlsCodes = new Set(['SELF_SIGNED_CERT_IN_CHAIN', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'CERT_HAS_EXPIRED', 'ERR_TLS_CERT_ALTNAME_INVALID']);
+export function auditErrorExplanation(code) {
+  const descriptions = {
+    PR_AUDIT_TIMEOUT: 'Batas waktu audit tercapai. Hasil kerentanan belum tersedia.',
+    PR_AUDIT_NETWORK_ERROR: 'Koneksi ke layanan npm gagal. Periksa koneksi internet atau DNS laptop.',
+    PR_AUDIT_REGISTRY_UNAVAILABLE: 'Layanan npm sedang tidak tersedia atau membatasi permintaan.',
+    PR_AUDIT_TLS_ERROR: 'Sertifikat/TLS layanan npm ditolak. Verifikasi keamanan tetap aktif.',
+    PR_AUDIT_EXECUTION_ERROR: 'Proses npm audit gagal dijalankan atau berhenti tidak normal.',
+    PR_AUDIT_SERVICE_ERROR: 'Layanan npm menolak audit; hasil belum dapat digunakan.',
+    PR_AUDIT_INTERRUPTED: 'Proses audit dihentikan. Pemeriksaan belum selesai.',
+    PR_AUDIT_REPORT_INVALID: 'Laporan audit tidak dapat dibaca. Hasil ini bukan lolos.',
+    PR_AUDIT_OUTPUT_LIMIT: 'Laporan melebihi batas ukuran pemeriksaan.',
+    PR_AUDIT_EXIT_REPORT_MISMATCH: 'Status proses dan isi laporan tidak cocok; hasil ditolak.',
+  };
+  return descriptions[code] || 'Data atau alat audit tidak valid. Periksa kode error pada laporan.';
+}
+function transportError(code) {
+  if (timeoutCodes.has(code)) return 'PR_AUDIT_TIMEOUT';
+  if (networkCodes.has(code)) return 'PR_AUDIT_NETWORK_ERROR';
+  if (tlsCodes.has(code)) return 'PR_AUDIT_TLS_ERROR';
+  return null;
+}
 const escape = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 function validPackageName(name) {
   if (typeof name !== 'string' || name.length > 214) return false;
@@ -32,10 +65,16 @@ export function validateAuditInput(manifest, lock) {
 }
 
 export function auditOutcome(execution) {
-  if (execution.error || execution.signal || ![0, 1].includes(execution.status)) throw new Error('PR_AUDIT_EXECUTION_ERROR');
+  if (execution.error) throw new Error(transportError(execution.error.code) || (execution.error.code === 'ENOBUFS' ? 'PR_AUDIT_OUTPUT_LIMIT' : 'PR_AUDIT_EXECUTION_ERROR'));
+  if (execution.signal) throw new Error('PR_AUDIT_INTERRUPTED');
+  if (![0, 1].includes(execution.status)) throw new Error('PR_AUDIT_EXECUTION_ERROR');
   let raw;
   try { raw = JSON.parse(execution.stdout); } catch { throw new Error('PR_AUDIT_REPORT_INVALID'); }
-  if (raw.error) throw new Error('PR_AUDIT_SERVICE_ERROR');
+  if (raw.error) {
+    const status = Number(raw.error.statusCode || raw.error.status || /^E([0-9]{3})$/.exec(raw.error.code || '')?.[1]);
+    const code = transportError(raw.error.code) || ((status === 429 || (status >= 500 && status <= 599)) ? 'PR_AUDIT_REGISTRY_UNAVAILABLE' : 'PR_AUDIT_SERVICE_ERROR');
+    throw new Error(code);
+  }
   const counts = raw.metadata?.vulnerabilities;
   if (!levels.every(level => Number.isSafeInteger(counts?.[level]) && counts[level] >= 0)) throw new Error('PR_AUDIT_COUNTS_INVALID');
   const blocked = counts.high + counts.critical > 0;
@@ -50,16 +89,18 @@ export function auditOutcome(execution) {
     vulnerabilities: Object.fromEntries(levels.map(level => [level, counts[level]])), findings };
 }
 
-export function runPrAudit({ source, provenance = {}, runner = spawnSync, npmEntry = process.env.npm_execpath || path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js') } = {}) {
+export function runPrAudit({ source, provenance = {}, runner = spawnSync,
+  pause = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
+  npmEntry = process.env.npm_execpath || path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js') } = {}) {
   const directory = path.join(source, 'reports', 'audit'); mkdirSync(directory, { recursive: true });
   const result = { status: 'error', exitCode: 2, tool: 'npm audit (PR lockfile, no install or lifecycle scripts)',
     scope: 'Frontend dependencies and devDependencies recorded in the PR merge package-lock.json; HIGH/CRITICAL gate; no backend audit.',
-    ...provenance, vulnerabilities: {}, findings: [] };
+    ...provenance, limits: { ...auditLimits }, cache: { mode: 'persistent', refresh: 'prefer-online' }, attempts: [], vulnerabilities: {}, findings: [] };
   const save = () => {
     const counts = result.vulnerabilities;
     const explanation = result.status === 'error' ? 'Pemeriksaan tidak selesai; hasil ini bukan lolos.' : result.status === 'blocked'
       ? 'PR ditolak: ditemukan masalah tingkat tinggi atau kritis.' : 'Audit lolos batas tinggi/kritis. Temuan sedang/rendah tetap perlu ditinjau.';
-    const text = `${explanation}\nStatus: ${result.status}\nTinggi: ${counts.high ?? '-'}; kritis: ${counts.critical ?? '-'}; sedang: ${counts.moderate ?? '-'}; rendah: ${counts.low ?? '-'}\n${result.code || ''}\n`;
+    const text = `${explanation}\nStatus: ${result.status}\nPercobaan: ${result.attempts.length}/${auditLimits.maxAttempts}\nTinggi: ${counts.high ?? '-'}; kritis: ${counts.critical ?? '-'}; sedang: ${counts.moderate ?? '-'}; rendah: ${counts.low ?? '-'}\n${result.code ? result.code + ': ' + auditErrorExplanation(result.code) : ''}\n`;
     writeFileSync(path.join(directory, 'summary.json'), JSON.stringify(result, null, 2) + '\n');
     writeFileSync(path.join(directory, 'summary.txt'), text);
     writeFileSync(path.join(directory, 'frontend.txt'), text + result.findings.map(f => `${f.package}: ${f.severity}; perbaikan tersedia=${f.fixAvailable}`).join('\n'));
@@ -78,6 +119,8 @@ export function runPrAudit({ source, provenance = {}, runner = spawnSync, npmEnt
     validateAuditInput(manifest, lock);
     result.lockfilePackages = Object.keys(lock.packages).filter(Boolean).length;
     if (!path.isAbsolute(npmEntry) || path.basename(npmEntry) !== 'npm-cli.js' || !existsSync(npmEntry)) throw new Error('TRUSTED_NPM_CLI_REQUIRED');
+    const cacheDirectory = ensureAuditCache();
+    result.cache.hasPreviousData = existsSync(path.join(cacheDirectory, '_cacache'));
     const safeManifest = { name: 'reservasi-pr-dependency-audit', version: '1.0.0', private: true };
     for (const field of dependencyFields) if (manifest[field]) safeManifest[field] = manifest[field];
     writeFileSync(path.join(scratch, 'package.json'), JSON.stringify(safeManifest));
@@ -87,10 +130,31 @@ export function runPrAudit({ source, provenance = {}, runner = spawnSync, npmEnt
     const env = { SystemRoot: process.env.SystemRoot || 'C:\\Windows', WINDIR: process.env.WINDIR || 'C:\\Windows',
       PATH: process.env.PATH || process.env.Path || '', TEMP: scratch, TMP: scratch, HOME: scratch, USERPROFILE: scratch,
       APPDATA: scratch, LOCALAPPDATA: scratch, CI: 'true', NO_COLOR: '1' };
-    const execution = runner(process.execPath, [npmEntry, 'audit', '--json', '--audit-level=high', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--include=dev',
-      '--registry=https://registry.npmjs.org/', `--userconfig=${userConfig}`, `--globalconfig=${globalConfig}`, `--cache=${path.join(scratch, 'cache')}`],
-    { cwd: scratch, env, encoding: 'utf8', windowsHide: true, timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
-    Object.assign(result, auditOutcome(execution));
+    const args = [npmEntry, 'audit', '--json', '--audit-level=high', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--include=dev',
+      '--registry=https://registry.npmjs.org/', '--strict-ssl=true', '--prefer-online', '--logs-max=3', '--fetch-retries=0', `--fetch-timeout=${auditLimits.requestTimeoutMs}`,
+      `--userconfig=${userConfig}`, `--globalconfig=${globalConfig}`, `--cache=${cacheDirectory}`];
+    // Retry the whole read-only audit once. Disable npm's nested retries so the
+    // HTTP timeout stays below the per-process deadline; never retry findings.
+    for (let attempt = 1; attempt <= auditLimits.maxAttempts; attempt++) {
+      if (attempt === 1) console.log(`Cache audit: disimpan antar-build; ${result.cache.hasPreviousData ? 'data cache sebelumnya tersedia' : 'pengisian cache awal'}. npm tetap memeriksa data terbaru secara online.`);
+      console.log(`Dependency Audit: percobaan ${attempt}/${auditLimits.maxAttempts}; batas waktu proses ${auditLimits.processTimeoutMs / 1000} detik, permintaan jaringan ${auditLimits.requestTimeoutMs / 1000} detik.`);
+      const started = Date.now();
+      try {
+        const execution = runner(process.execPath, args, { cwd: scratch, env, encoding: 'utf8', windowsHide: true,
+          timeout: auditLimits.processTimeoutMs, maxBuffer: 16 * 1024 * 1024 });
+        const outcome = auditOutcome(execution);
+        result.attempts.push({ attempt, status: outcome.status, elapsedMs: Date.now() - started });
+        Object.assign(result, outcome);
+        break;
+      } catch (error) {
+        const code = /^[A-Z_]+$/.test(error.message) ? error.message : 'PR_AUDIT_EXECUTION_ERROR';
+        result.attempts.push({ attempt, status: 'error', code, elapsedMs: Date.now() - started });
+        save();
+        if (!retryableCodes.has(code) || attempt === auditLimits.maxAttempts) throw new Error(code);
+        console.log(`Audit belum selesai: ${auditErrorExplanation(code)} Mencoba ulang satu kali setelah ${auditLimits.retryDelayMs / 1000} detik.`);
+        pause(auditLimits.retryDelayMs);
+      }
+    }
   } catch (error) {
     result.status = 'error'; result.exitCode = 2;
     result.code = /^[A-Z_]+$/.test(error.message) ? error.message : 'PR_AUDIT_INPUT_OR_SERVICE_ERROR';
