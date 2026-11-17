@@ -33,6 +33,7 @@ export function auditConsole(report) {
     `Hasil: ${resultLabel(report)}`,
     `Temuan: kritis=${counts.critical ?? '-'}, tinggi=${counts.high ?? '-'}, sedang=${counts.moderate ?? '-'}, rendah=${counts.low ?? '-'}, informasi=${counts.info ?? '-'}.`];
   if (report.status === 'passed' && findings.length) lines.push('Lolos tidak berarti nol masalah: temuan sedang/rendah berikut tetap perlu ditinjau.');
+  if (report.cache?.mode === 'persistent') lines.push(`Cache: dipakai ulang antar-build; ${report.cache.hasPreviousData ? 'data sebelumnya tersedia' : 'pengisian awal'}. Data terbaru tetap diperiksa online.`);
   if (report.attempts) lines.push(`Percobaan audit: ${report.attempts.length}/${report.limits?.maxAttempts ?? 2}.`);
   if (report.code) lines.push(`Kode error: ${safe(report.code)}`, `Alasan: ${auditErrorExplanation(report.code)}`);
   for (const attempt of report.attempts || []) {

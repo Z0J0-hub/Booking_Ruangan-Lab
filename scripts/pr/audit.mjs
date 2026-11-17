@@ -1,11 +1,18 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync, lstatSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { projectRoot } from './plan.mjs';
 
 const levels = ['info', 'low', 'moderate', 'high', 'critical'];
 const dependencyFields = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
-export const auditLimits = { requestTimeoutMs: 30_000, processTimeoutMs: 90_000, maxAttempts: 2, retryDelayMs: 2000 };
+export const auditLimits = { requestTimeoutMs: 60_000, processTimeoutMs: 240_000, maxAttempts: 2, retryDelayMs: 2000 };
+export function ensureAuditCache(toolsRoot = path.join(projectRoot, '.tools')) {
+  mkdirSync(toolsRoot, { recursive: true });
+  const directory = path.join(toolsRoot, 'npm-audit-cache-v1');
+  mkdirSync(directory, { recursive: true });
+  if (lstatSync(directory).isSymbolicLink() || path.relative(realpathSync(toolsRoot), realpathSync(directory)) !== 'npm-audit-cache-v1') throw new Error('UNSAFE_AUDIT_CACHE');
+  return directory;
+}
 const retryableCodes = new Set(['PR_AUDIT_TIMEOUT', 'PR_AUDIT_NETWORK_ERROR', 'PR_AUDIT_REGISTRY_UNAVAILABLE']);
 const networkCodes = new Set(['ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH', 'EPIPE']);
 const timeoutCodes = new Set(['ETIMEDOUT', 'ESOCKETTIMEDOUT', 'ERR_SOCKET_TIMEOUT']);
@@ -88,7 +95,7 @@ export function runPrAudit({ source, provenance = {}, runner = spawnSync,
   const directory = path.join(source, 'reports', 'audit'); mkdirSync(directory, { recursive: true });
   const result = { status: 'error', exitCode: 2, tool: 'npm audit (PR lockfile, no install or lifecycle scripts)',
     scope: 'Frontend dependencies and devDependencies recorded in the PR merge package-lock.json; HIGH/CRITICAL gate; no backend audit.',
-    ...provenance, limits: { ...auditLimits }, attempts: [], vulnerabilities: {}, findings: [] };
+    ...provenance, limits: { ...auditLimits }, cache: { mode: 'persistent', refresh: 'prefer-online' }, attempts: [], vulnerabilities: {}, findings: [] };
   const save = () => {
     const counts = result.vulnerabilities;
     const explanation = result.status === 'error' ? 'Pemeriksaan tidak selesai; hasil ini bukan lolos.' : result.status === 'blocked'
@@ -112,6 +119,8 @@ export function runPrAudit({ source, provenance = {}, runner = spawnSync,
     validateAuditInput(manifest, lock);
     result.lockfilePackages = Object.keys(lock.packages).filter(Boolean).length;
     if (!path.isAbsolute(npmEntry) || path.basename(npmEntry) !== 'npm-cli.js' || !existsSync(npmEntry)) throw new Error('TRUSTED_NPM_CLI_REQUIRED');
+    const cacheDirectory = ensureAuditCache();
+    result.cache.hasPreviousData = existsSync(path.join(cacheDirectory, '_cacache'));
     const safeManifest = { name: 'reservasi-pr-dependency-audit', version: '1.0.0', private: true };
     for (const field of dependencyFields) if (manifest[field]) safeManifest[field] = manifest[field];
     writeFileSync(path.join(scratch, 'package.json'), JSON.stringify(safeManifest));
@@ -122,11 +131,12 @@ export function runPrAudit({ source, provenance = {}, runner = spawnSync,
       PATH: process.env.PATH || process.env.Path || '', TEMP: scratch, TMP: scratch, HOME: scratch, USERPROFILE: scratch,
       APPDATA: scratch, LOCALAPPDATA: scratch, CI: 'true', NO_COLOR: '1' };
     const args = [npmEntry, 'audit', '--json', '--audit-level=high', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--include=dev',
-      '--registry=https://registry.npmjs.org/', '--strict-ssl=true', '--fetch-retries=0', `--fetch-timeout=${auditLimits.requestTimeoutMs}`,
-      `--userconfig=${userConfig}`, `--globalconfig=${globalConfig}`, `--cache=${path.join(scratch, 'cache')}`];
+      '--registry=https://registry.npmjs.org/', '--strict-ssl=true', '--prefer-online', '--logs-max=3', '--fetch-retries=0', `--fetch-timeout=${auditLimits.requestTimeoutMs}`,
+      `--userconfig=${userConfig}`, `--globalconfig=${globalConfig}`, `--cache=${cacheDirectory}`];
     // Retry the whole read-only audit once. Disable npm's nested retries so the
     // HTTP timeout stays below the per-process deadline; never retry findings.
     for (let attempt = 1; attempt <= auditLimits.maxAttempts; attempt++) {
+      if (attempt === 1) console.log(`Cache audit: disimpan antar-build; ${result.cache.hasPreviousData ? 'data cache sebelumnya tersedia' : 'pengisian cache awal'}. npm tetap memeriksa data terbaru secara online.`);
       console.log(`Dependency Audit: percobaan ${attempt}/${auditLimits.maxAttempts}; batas waktu proses ${auditLimits.processTimeoutMs / 1000} detik, permintaan jaringan ${auditLimits.requestTimeoutMs / 1000} detik.`);
       const started = Date.now();
       try {

@@ -45,6 +45,20 @@ test('high/critical dependency findings block a PR even when SAST passes', t => 
     assert.deepEqual(combinePrChecks({ sast: { status: 'passed', exitCode: 0 }, audit }), { status: 'blocked', exitCode: 1 });
   }
 });
+test('persistent cache survives scratch cleanup while every audit checks live results again', t => {
+  const { root } = fixture(t); const caches = []; const scratches = []; let calls = 0;
+  const runner = (_exe, args, options) => {
+    calls++; caches.push(args.find(arg => arg.startsWith('--cache=')).slice(8)); scratches.push(options.cwd);
+    assert.ok(args.includes('--prefer-online'));
+    assert.equal(args.some(arg => /^--(?:offline|prefer-offline)(?:=|$)/.test(arg)), false);
+    return response(calls === 1 ? {} : { high: 1 });
+  };
+  assert.equal(runPrAudit({ source: root, runner }).status, 'passed');
+  assert.equal(runPrAudit({ source: root, runner }).status, 'blocked');
+  assert.equal(calls, 2); assert.equal(caches[0], caches[1]);
+  assert.ok(existsSync(caches[0]));
+  for (const scratch of scratches) { assert.notEqual(caches[0], path.join(scratch, 'cache')); assert.equal(existsSync(scratch), false); }
+});
 test('missing files, stale lock, local dependencies and registry redirects fail before any audit process starts', t => {
   const { root, manifest, lock } = fixture(t); let calls = 0;
   const run = () => runPrAudit({ source: root, runner: () => { calls++; return response(); } });
@@ -89,9 +103,9 @@ test('a process timeout retries once and can recover with a valid audit; safe ne
   const { root } = fixture(t); let calls = 0; const waits = [];
   const result = runPrAudit({ source: root, pause: ms => waits.push(ms), runner(_exe, args, options) {
     calls++;
-    assert.ok(args.includes('--fetch-timeout=30000')); assert.ok(args.includes('--fetch-retries=0'));
+    assert.ok(args.includes('--fetch-timeout=60000')); assert.ok(args.includes('--fetch-retries=0'));
     assert.ok(args.includes('--strict-ssl=true')); assert.ok(args.includes('--ignore-scripts'));
-    assert.equal(options.timeout, 90000);
+    assert.equal(options.timeout, 240000);
     return calls === 1 ? { error: Object.assign(new Error('private timeout details'), { code: 'ETIMEDOUT' }), signal: 'SIGTERM', status: null } : response({ moderate: 2 });
   } });
   assert.equal(calls, 2); assert.deepEqual(waits, [2000]);
