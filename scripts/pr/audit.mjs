@@ -74,7 +74,9 @@ export function runPrAudit({ source, provenance = {}, runner = spawnSync, npmEnt
   try {
     const manifest = JSON.parse(readFileSync(path.join(source, 'package.json'), 'utf8'));
     const lockText = readFileSync(path.join(source, 'package-lock.json'), 'utf8');
-    validateAuditInput(manifest, JSON.parse(lockText));
+    const lock = JSON.parse(lockText);
+    validateAuditInput(manifest, lock);
+    result.lockfilePackages = Object.keys(lock.packages).filter(Boolean).length;
     if (!path.isAbsolute(npmEntry) || path.basename(npmEntry) !== 'npm-cli.js' || !existsSync(npmEntry)) throw new Error('TRUSTED_NPM_CLI_REQUIRED');
     const safeManifest = { name: 'reservasi-pr-dependency-audit', version: '1.0.0', private: true };
     for (const field of dependencyFields) if (manifest[field]) safeManifest[field] = manifest[field];

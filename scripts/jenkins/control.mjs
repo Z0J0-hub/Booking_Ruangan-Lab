@@ -45,6 +45,14 @@ try {
     console.log(JSON.stringify({ controller: data, plugins: plugins.plugins.filter((p) => ['github-branch-source', 'workflow-multibranch', 'credentials', 'cloudbees-folder'].includes(p.shortName)) }, null, 2));
   } else if (command === 'validate') {
     for (const name of ['Jenkinsfile.dev', 'Jenkinsfile.security-proof', 'Jenkinsfile.container']) {
+      const source = readFileSync(path.join(root, name), 'utf8');
+      if (name === 'Jenkinsfile.dev' && source.startsWith('// PR-only')) {
+        const script = `new GroovyClassLoader(Jenkins.instance.pluginManager.uberClassLoader).parseClass(new String('${Buffer.from(source).toString('base64')}'.decodeBase64(), 'UTF-8'), 'Jenkinsfile.dev'); println('Scripted Jenkinsfile syntax valid')`;
+        const result = await (await request('/scriptText', { method: 'POST', body: new URLSearchParams({ script }) })).text();
+        if (!result.includes('Scripted Jenkinsfile syntax valid')) throw new Error('Scripted Jenkinsfile syntax validation failed.');
+        console.log(`${name}: Scripted Jenkinsfile syntax valid (compiled only; not executed).`);
+        continue;
+      }
       const form = new URLSearchParams({ jenkinsfile: readFileSync(path.join(root, name), 'utf8') });
       const result = await (await request('/pipeline-model-converter/validate', { method: 'POST', body: form })).text();
       console.log(`${name}: ${result.trim()}`);
@@ -148,7 +156,7 @@ try {
     const number = process.argv[4] || '';
     if (number && !/^[1-9][0-9]*$/.test(number)) throw new Error('Invalid PR number.');
     const values = await publicConfiguration();
-    const body = new URLSearchParams({ ...values, PILIH_PEMERIKSAAN: 'Periksa PR menuju development', NOMOR_PR: number, PERIKSA_ULANG_PR: 'true' });
+    const body = new URLSearchParams({ ...values, NOMOR_PR: number, PERIKSA_ULANG_PR: 'true' });
     const response = await request(`${jobPath}/buildWithParameters`, { method: 'POST', body });
     console.log(`PR check queued: ${response.headers.get('location') || 'check queue'}`);
   } else if (command === 'update-build-form') {
@@ -157,24 +165,22 @@ try {
     const revision = before.match(/<hudson\.plugins\.git\.BranchSpec>\s*<name>([a-f0-9]{40})<\/name>/)?.[1];
     if (!revision || !before.includes('<scriptPath>Jenkinsfile.dev</scriptPath>')) throw new Error('Expected a pinned Jenkinsfile.dev job.');
     const values = await publicConfiguration();
-    const choices = ['Periksa PR menuju development', 'Periksa kode branch ilyas terbaru', 'Coba alat pendeteksi: contoh masalah OWASP'];
     const stringParameter = (name, value, description) => `<hudson.model.StringParameterDefinition><name>${name}</name><description>${xmlEscape(description)}</description><defaultValue>${xmlEscape(value)}</defaultValue><trim>true</trim></hudson.model.StringParameterDefinition>`;
     const property = `<hudson.model.ParametersDefinitionProperty><parameterDefinitions>
-<hudson.model.ChoiceParameterDefinition><name>PILIH_PEMERIKSAAN</name><description>${xmlEscape('PR: periksa kode (SAST) dan kerentanan paket pendukung pada gabungan PR dengan development. Branch ilyas terbaru: ambil kode terbaru yang sudah di-push ke ilyas saat tahap pengambilan kode; jalankan pemeriksaan, build, dan uji lokal. Perubahan yang belum di-push tidak ikut. Percobaan OWASP: hanya contoh masalah untuk mencoba alat, bukan aplikasi. Tidak deploy produksi.')}</description><choices class="java.util.Arrays$ArrayList"><a class="string-array">${choices.map(c => `<string>${xmlEscape(c)}</string>`).join('')}</a></choices></hudson.model.ChoiceParameterDefinition>
 ${stringParameter('NOMOR_PR', '', 'Hanya untuk Periksa PR. Isi nomor PR terbuka yang tujuannya development, dari branch mana pun dalam repo yang sama; kosong = cari otomatis. PR ke main belum didukung.')}
 <hudson.model.BooleanParameterDefinition><name>PERIKSA_ULANG_PR</name><description>Hanya untuk Periksa PR manual: periksa lagi meskipun kodenya belum berubah. Jadwal otomatis hanya memeriksa perubahan baru.</description><defaultValue>true</defaultValue></hudson.model.BooleanParameterDefinition>
-${stringParameter('SUPABASE_URL', values.SUPABASE_URL, 'Pengaturan aplikasi tersimpan. Biarkan nilainya; dipakai saat memeriksa kode branch ilyas terbaru.')}
+${stringParameter('SUPABASE_URL', values.SUPABASE_URL, 'Pengaturan publik untuk build kode PR. Biarkan nilai yang sudah tersimpan.')}
 ${stringParameter('SUPABASE_PUBLIC_KEY', values.SUPABASE_PUBLIC_KEY, 'Kunci publik aplikasi tersimpan. Biarkan nilainya; jangan isi password atau kunci rahasia.')}
 </parameterDefinitions></hudson.model.ParametersDefinitionProperty>`;
     const after = before.replace(/<hudson\.model\.ParametersDefinitionProperty>[\s\S]*?<\/hudson\.model\.ParametersDefinitionProperty>/, property)
-      .replace(/<description>[\s\S]*?<\/description>/, `<description>${xmlEscape('Periksa PR menuju development dari branch mana pun dalam repo tim, kode branch ilyas terbaru dari GitHub, atau percobaan alat dengan contoh OWASP. Nomor versi kode tercantum pada build dan laporan reports/source. Tidak melakukan merge atau deploy produksi.')}</description>`);
+      .replace(/<description>[\s\S]*?<\/description>/, `<description>${xmlEscape('Hanya PR menuju development: Infrastructure Configuration, Dependency Audit, SAST OWASP Top 10, build development, dan STRIDE database rollback-only. Memakai kode gabungan PR, tanpa contoh OWASP, mode branch, deployment atau DAST. Build memerlukan input yang sudah direview.')}</description>`);
     if (after === before) throw new Error('Cannot locate parameter definitions.');
     const backup = path.join(root, '.runtime', 'jenkins-build-form'); mkdirSync(backup, { recursive: true });
     writeFileSync(path.join(backup, 'before.xml'), before);
     await request(`${jobPath}/config.xml`, { method: 'POST', headers: { 'Content-Type': 'application/xml' }, body: after });
     const verified = await (await request(`${jobPath}/config.xml`)).text();
-    if (!verified.includes('<name>PILIH_PEMERIKSAAN</name>') || verified.includes('<name>PROOF_GATE</name>') || verified.includes('<name>RUN_MODE</name>')) throw new Error('Build form verification failed.');
-    console.log(`Build form updated: PR -> development; latest ilyas source fetched per branch build; pipeline definition pinned to ${revision}.`);
+    if (!verified.includes('<name>NOMOR_PR</name>') || verified.includes('<name>PILIH_PEMERIKSAAN</name>') || verified.includes('<name>PROOF_GATE</name>') || verified.includes('<name>RUN_MODE</name>')) throw new Error('Build form verification failed.');
+    console.log(`PR-only build form updated; pipeline definition pinned to ${revision}.`);
   } else if (command === 'configure-main') {
     const before = await (await request('/job/reservasi-pipeline/config.xml')).text();
     if (!before.includes('CpsScmFlowDefinition') || !before.includes('<scriptPath>Jenkinsfile.dev</scriptPath>') || !before.includes('<name>*/ilyas</name>')) {
@@ -260,19 +266,9 @@ println('Main pipeline: ' + main.fullName)
     const response = await request(`${jobPath}/build`, { method: 'POST' });
     console.log(`Queued: ${response.headers.get('location') || 'check job queue'}`);
   } else if (command === 'build-validation') {
-    const values = await publicConfiguration();
-    const body = new URLSearchParams({ ...values, PILIH_PEMERIKSAAN: 'Periksa kode branch ilyas terbaru', NOMOR_PR: '', PERIKSA_ULANG_PR: 'false' });
-    const response = await request(`${jobPath}/buildWithParameters`, { method: 'POST', body });
-    console.log(`Validation queued with existing public configuration: ${response.headers.get('location') || 'check job queue'}`);
+    throw new Error('Branch mode removed. Use build-pr reservasi-pipeline <PR-number>.');
   } else if (command === 'build-proof') {
-    const gate = process.argv[4] || 'secret';
-    if (!['secret', 'sast', 'owasp'].includes(gate)) throw new Error('Invalid proof gate.');
-    if (job === 'reservasi-pipeline' && gate !== 'owasp') throw new Error('The main build form offers one detector demonstration: owasp.');
-    // Parameters are registered on the first build; initialize with a normal build if needed.
-    const values = job === 'reservasi-pipeline' ? await publicConfiguration() : {};
-    const parameters = job === 'reservasi-pipeline' ? { PILIH_PEMERIKSAAN: 'Coba alat pendeteksi: contoh masalah OWASP', NOMOR_PR: '', PERIKSA_ULANG_PR: 'false' } : { RUN_MODE: 'full', PROOF_GATE: gate, RUN_STRIDE_DATABASE: 'false', STRIDE_DB_HOST: '' };
-    const response = await request(`${jobPath}/buildWithParameters`, { method: 'POST', body: new URLSearchParams({ ...values, ...parameters }) });
-    console.log(`Proof queued: ${response.headers.get('location') || 'check job queue'}`);
+    throw new Error('OWASP demonstration removed from the active pipeline.');
   } else if (command === 'automation-state') {
     const classic = await (await request('/job/reservasi-pipeline/config.xml')).text();
     const index = await (await request('/api/json?tree=jobs[name]')).json();

@@ -1,5 +1,8 @@
 # Urutan demo dan bukti penilaian
 
+Untuk demo job aktif gunakan [PR_ONLY.md](PR_ONLY.md). Daftar di bawah menyimpan
+bukti/penggunaan mode sebelumnya; job aktif tidak menjalankan contoh OWASP/DAST.
+
 Penggunaan sekarang: reservasi-pipeline, PILIH_PEMERIKSAAN. Pilih kode branch ilyas
 terbaru untuk mengambil source terbaru dari GitHub; versi yang benar-benar
 diperiksa ada pada keterangan build dan reports/source/summary.txt. Pilih percobaan alat untuk

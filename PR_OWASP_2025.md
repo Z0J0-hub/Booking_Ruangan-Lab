@@ -1,5 +1,9 @@
 # Pemeriksaan PR development dan OWASP Top 10:2025
 
+**Panduan ini mencatat konfigurasi sebelumnya. Alur aktif sudah menjadi PR-only;
+gunakan [PR_ONLY.md](PR_ONLY.md). Pilihan branch dan contoh OWASP di bawah sudah
+dihapus dari form/job aktif.**
+
 ## Tempat memeriksa
 
 Semua tetap dalam [reservasi-pipeline](http://localhost:8080/job/reservasi-pipeline/).
