@@ -3,8 +3,9 @@
 ## Tempat memeriksa
 
 Semua tetap dalam [reservasi-pipeline](http://localhost:8080/job/reservasi-pipeline/).
-Sumber PR yang diterima: **ilyas -> development**, repository tim yang sama.
-PR ke main, branch sumber lain, dan fork tidak dipindai otomatis oleh konfigurasi ini.
+Sumber PR yang diterima: **branch mana pun -> development**, repository tim yang sama.
+Contoh: `ilyas`, `fitur/login`, atau `perbaikan-booking` -> `development`.
+PR ke main dan PR dari fork/repo lain tidak dipindai oleh konfigurasi ini.
 
 Jenkins memeriksa GitHub setiap sekitar 5 menit, tanpa public tunnel/webhook.
 PR baru, perubahan head, perubahan base development, atau pembaruan scanner yang
@@ -17,12 +18,20 @@ di .runtime/pr/completed.json berdasarkan head + base + revisi scanner.
 Pada build PR, periksa:
 
 1. Description: nomor PR dan head commit.
-2. **Discover Development PR**: pemilihan PR eligible.
-3. **SAST**: Semgrep CE 1.185.0 dan ESLint security.
+2. **Cari PR menuju development**: pemilihan PR yang masih terbuka dari branch mana pun dalam repo.
+3. **SAST dan Audit Dependency PR**: pemeriksaan kode dengan Semgrep/ESLint dan pemeriksaan paket frontend dengan npm audit.
 4. **Artifacts**: reports/pr/plan.json dan summary.json menyebut nomor PR,
    head/base, merge commit yang diuji, dan revisi scanner.
 5. **Artifacts/reports/sast/summary.html**: laporan yang bisa dibaca;
    coverage.json memetakan kategori/rule, findings.json memuat file/baris/CWE.
+6. **Artifacts/reports/audit/summary.html**: daftar paket bermasalah beserta
+   tingkatnya. summary.json mencatat nomor PR, head/base/merge yang diaudit dan
+   jumlah temuan tinggi/kritis/sedang/rendah. summary.txt dan frontend.txt juga tersedia.
+
+PR lolos hanya jika **SAST dan audit dependency keduanya lolos**. Audit memblokir
+temuan HIGH/CRITICAL; temuan sedang/rendah tetap dicatat. Error jaringan, lockfile
+hilang/rusak, ketidaksesuaian package.json dan lockfile, atau laporan npm tidak valid
+menghasilkan error, bukan hasil lolos. Error dapat dicoba ulang oleh jadwal berikutnya.
 
 Hasil hanya tersedia di Jenkins. Runner publik ini belum mengirim status/check
 ke GitHub dan belum menetapkan required checks/branch protection. Itu memerlukan
@@ -31,20 +40,73 @@ otomatis diblokir oleh GitHub. PR tidak di-merge oleh proses ini.
 
 ## Pemakaian manual
 
-Build with Parameters:
+Di **Build with Parameters**, cukup isi **PILIH_PEMERIKSAAN**:
 
-- **RUN_MODE=pr**: cari PR eligible; PR_NUMBER opsional untuk nomor tertentu.
-  PR_FORCE_RESCAN=true memaksa ulang. PROOF_GATE=none, database=false.
-- **RUN_MODE=full**, PROOF_GATE=none: CI lengkap untuk revisi source/toolchain
-  yang telah disetujui (scan infra, SCA/secrets, build, DAST, dan operasi).
-- **RUN_MODE=full**, PROOF_GATE=owasp: fixture sintetis memicu pemeriksaan
-  representatif seluruh 10 kategori; build FAILURE memang diharapkan di SAST.
-  Lihat coverage.json: tiap kategori memiliki findings > 0. Fixture dibersihkan.
+| Pilihan | Kode yang diperiksa | Cara membaca hasil |
+|---|---|---|
+| Periksa PR menuju development | Gabungan kode branch asal PR dan development; SAST serta audit dependency frontend | Hijau = SAST lolos dan tidak ada temuan paket tingkat tinggi/kritis. Merah = ada masalah yang memblokir atau pemeriksaan error. |
+| Periksa kode branch ilyas terbaru | Versi terbaru yang sudah di-push ke branch ilyas, diambil saat tahap pengambilan kode | Tidak ditambahkan contoh kode bermasalah. Tetap menjalankan pemeriksaan lain, build, DAST lokal dan latihan pemulihan. |
+| Coba alat pendeteksi: contoh masalah OWASP | Hanya satu file contoh sementara, bukan kode aplikasi | Hijau = semua 15 pola contoh dari 10 kelompok masalah terdeteksi dan ditolak. Merah = alat error atau ada contoh yang belum terdeteksi. |
+
+Untuk PR, isi **NOMOR_PR** atau kosongkan agar Jenkins mencari PR terbuka
+menuju `development` dari branch mana pun dalam repo tim. **PERIKSA_ULANG_PR** memaksa pemeriksaan manual ulang;
+jadwal otomatis tetap hanya memeriksa perubahan baru. Bila ada beberapa PR, Jenkins
+memeriksa satu PR yang belum diperiksa per jadwal; PR lainnya menyusul pada jadwal
+berikutnya. Daftar PR dibaca per halaman agar tidak terbatas pada 100 PR pertama.
+Nama branch asal dicatat sesuai PR sebenarnya pada keterangan build dan laporan.
+Jika tidak ada PR terbuka,
+hasil abu-abu berarti tidak ada kode PR yang diperiksa, bukan pemeriksaan lolos.
+
+Untuk pilihan aplikasi dan percobaan, abaikan dua kolom PR. Biarkan pengaturan
+Supabase tersimpan. Pilihan database tidak ditampilkan karena job ini tidak
+mendukung tes database yang memerlukan identitas branch development terpercaya.
+
+Pilihan **Periksa kode branch ilyas terbaru** mengambil ujung branch ilyas dari
+GitHub pada setiap build, terpisah dari pin pengaturan pipeline. Tidak memerlukan
+PR terbuka. Perubahan lokal yang belum di-push tidak ikut. Jika ada push baru
+setelah tahap pengambilan kode, perubahan itu ikut build berikutnya.
+
+Lihat tahap **Ambil kode branch ilyas terbaru**, keterangan build, atau
+**Artifacts -> reports/source/summary.txt** untuk nomor versi kode yang diperiksa.
+`summary.json` di folder yang sama mencatat `branch`, `commit` kode aplikasi,
+dan `pipelineCommit` (versi pengaturan pipeline). Kegagalan mengambil branch
+menghentikan build, bukan memeriksa salinan lama lalu menyebutnya terbaru.
+
+Mode ini menjalankan dependency, skrip pemeriksaan, tes dan build dari branch
+ilyas yang dipilih sebagai branch terpercaya. Karena itu perubahan skrip/rules
+di branch tersebut juga berlaku pada build branch berikutnya. Mode PR tetap
+membaca source sebagai data dan tidak mengeksekusi skrip dari PR.
+Branch development/main belum menjadi pilihan pemeriksaan branch.
+
+Pada percobaan, laporan `reports/sast/summary.html` menjelaskan hasil dalam
+bahasa Indonesia; `hasil-percobaan.json` mencatat apakah semua contoh terdeteksi.
+Laporan teknis `summary.json` tetap menyebut `blocked` jika contoh berhasil
+ditolak. Build hijau berarti **tes alat berhasil**, bukan aplikasi bebas masalah.
+File contoh tidak dijalankan atau dibangun menjadi aplikasi, lalu dibersihkan.
+
+Nama lama `RUN_MODE=full` dan `PROOF_GATE` tidak lagi ditampilkan di form.
+Build lama #33 tetap merah karena saat itu penolakan contoh sengaja diteruskan
+sebagai kegagalan build; percobaan baru menilai hasil penolakan tersebut.
 
 Mode PR hanya menguji source merge dengan scanner terpercaya. Tidak menjalankan
 package.json scripts, npm install, Jenkinsfile, auth/database, build, atau DAST
 dari PR. Install/test yang terlihat di build PR adalah milik toolchain yang disetujui.
 Mode PR tidak boleh diklaim sebagai seluruh CI aplikasi/tes integrasi PR.
+
+Audit PR menggunakan package.json/package-lock.json pada merge yang sama dengan
+SAST. Keduanya disalin ke folder sementara khusus audit. Skrip lifecycle dibuang
+dari manifest audit, ignore-scripts diaktifkan, dan npm audit berjalan dengan
+package-lock-only tanpa npm install/ci. File .npmrc dari PR tidak digunakan;
+registry dikunci ke registry.npmjs.org, konfigurasi pengguna/global kosong, dan
+credential Jenkins tidak diteruskan. Paket devDependencies ikut diperiksa.
+Hanya ringkasan dan detail advisory yang telah dipilih yang menjadi artifacts;
+output mentah proses tidak diteruskan. Folder sementara dibersihkan.
+
+Untuk konfigurasi proyek saat ini, audit PR mendukung npm lockfile versi 2/3 dan
+paket registry npm publik. Dependency lokal/git, workspace, overrides, atau registry
+lain ditolak sebagai konfigurasi belum didukung, bukan dilewatkan lalu dianggap lolos.
+Audit ini belum memeriksa backend MySQL yang sudah tidak aktif, lisensi, malware
+paket, atau keaslian seluruh rantai pasok.
 
 ## Mengapa konfigurasi Jenkins dipin ke commit
 
@@ -72,11 +134,15 @@ admin memperbarui pin secara eksplisit dari workspace bersih:
 
 ```powershell
 node scripts/jenkins/control.mjs activate-pr reservasi-pipeline <SHA-commit-disetujui>
+node scripts/jenkins/control.mjs update-build-form reservasi-pipeline
 node scripts/jenkins/control.mjs build-validation reservasi-pipeline
 ```
 
 Perubahan aplikasi biasa dalam PR otomatis dipindai tanpa mengganti pin scanner.
-Full/manual build memakai source pada pin tersebut sampai diperbarui dengan sengaja.
+Mode PR dan percobaan memakai alat pada pin tersebut; mode branch mengambil
+source terbaru ilyas setelah memuat definisi pipeline dari pin. Perubahan aplikasi
+biasa pada ilyas tidak memerlukan pembaruan pin. Pembaruan Jenkinsfile.dev sendiri
+memerlukan langkah aktivasi di atas agar definisi pipeline yang dijalankan ikut berubah.
 Tidak ada branch baru; pin merujuk commit yang berasal dari ilyas.
 
 ## Cakupan OWASP terbaru

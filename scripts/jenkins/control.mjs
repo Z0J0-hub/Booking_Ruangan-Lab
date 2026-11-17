@@ -141,16 +141,40 @@ try {
     const verify = await (await request('/job/reservasi-pipeline/config.xml')).text();
     if (!verify.includes(`<name>${revision}</name>`) || verify.includes('<lightweight>true</lightweight>')) throw new Error('Trusted revision/full checkout not confirmed.');
     writeFileSync(path.join(reportDir, 'pr-activation.json'), JSON.stringify({ job: 'reservasi-pipeline', trustedScannerRevision: revision,
-      target: 'development', source: 'ilyas', mode: 'data-only PR merge SAST', pollingMinutes: 5 }, null, 2) + '\n');
+      target: 'development', sourcePolicy: 'any branch in the same repository', mode: 'PR merge SAST and lockfile dependency audit', pollingMinutes: 5 }, null, 2) + '\n');
     console.log(`Trusted PR scanner pinned to ${revision}. Run one full/manual build to register the timer and PR parameters.`);
   } else if (command === 'build-pr') {
     if (job !== 'reservasi-pipeline') throw new Error('Use the main pipeline for PR scans.');
     const number = process.argv[4] || '';
     if (number && !/^[1-9][0-9]*$/.test(number)) throw new Error('Invalid PR number.');
     const values = await publicConfiguration();
-    const body = new URLSearchParams({ ...values, RUN_MODE: 'pr', PR_NUMBER: number, PR_FORCE_RESCAN: 'true', PROOF_GATE: 'none', RUN_STRIDE_DATABASE: 'false', STRIDE_DB_HOST: '' });
+    const body = new URLSearchParams({ ...values, PILIH_PEMERIKSAAN: 'Periksa PR menuju development', NOMOR_PR: number, PERIKSA_ULANG_PR: 'true' });
     const response = await request(`${jobPath}/buildWithParameters`, { method: 'POST', body });
     console.log(`PR check queued: ${response.headers.get('location') || 'check queue'}`);
+  } else if (command === 'update-build-form') {
+    if (job !== 'reservasi-pipeline') throw new Error('Use the main pipeline.');
+    const before = await (await request(`${jobPath}/config.xml`)).text();
+    const revision = before.match(/<hudson\.plugins\.git\.BranchSpec>\s*<name>([a-f0-9]{40})<\/name>/)?.[1];
+    if (!revision || !before.includes('<scriptPath>Jenkinsfile.dev</scriptPath>')) throw new Error('Expected a pinned Jenkinsfile.dev job.');
+    const values = await publicConfiguration();
+    const choices = ['Periksa PR menuju development', 'Periksa kode branch ilyas terbaru', 'Coba alat pendeteksi: contoh masalah OWASP'];
+    const stringParameter = (name, value, description) => `<hudson.model.StringParameterDefinition><name>${name}</name><description>${xmlEscape(description)}</description><defaultValue>${xmlEscape(value)}</defaultValue><trim>true</trim></hudson.model.StringParameterDefinition>`;
+    const property = `<hudson.model.ParametersDefinitionProperty><parameterDefinitions>
+<hudson.model.ChoiceParameterDefinition><name>PILIH_PEMERIKSAAN</name><description>${xmlEscape('PR: periksa kode (SAST) dan kerentanan paket pendukung pada gabungan PR dengan development. Branch ilyas terbaru: ambil kode terbaru yang sudah di-push ke ilyas saat tahap pengambilan kode; jalankan pemeriksaan, build, dan uji lokal. Perubahan yang belum di-push tidak ikut. Percobaan OWASP: hanya contoh masalah untuk mencoba alat, bukan aplikasi. Tidak deploy produksi.')}</description><choices class="java.util.Arrays$ArrayList"><a class="string-array">${choices.map(c => `<string>${xmlEscape(c)}</string>`).join('')}</a></choices></hudson.model.ChoiceParameterDefinition>
+${stringParameter('NOMOR_PR', '', 'Hanya untuk Periksa PR. Isi nomor PR terbuka yang tujuannya development, dari branch mana pun dalam repo yang sama; kosong = cari otomatis. PR ke main belum didukung.')}
+<hudson.model.BooleanParameterDefinition><name>PERIKSA_ULANG_PR</name><description>Hanya untuk Periksa PR manual: periksa lagi meskipun kodenya belum berubah. Jadwal otomatis hanya memeriksa perubahan baru.</description><defaultValue>true</defaultValue></hudson.model.BooleanParameterDefinition>
+${stringParameter('SUPABASE_URL', values.SUPABASE_URL, 'Pengaturan aplikasi tersimpan. Biarkan nilainya; dipakai saat memeriksa kode branch ilyas terbaru.')}
+${stringParameter('SUPABASE_PUBLIC_KEY', values.SUPABASE_PUBLIC_KEY, 'Kunci publik aplikasi tersimpan. Biarkan nilainya; jangan isi password atau kunci rahasia.')}
+</parameterDefinitions></hudson.model.ParametersDefinitionProperty>`;
+    const after = before.replace(/<hudson\.model\.ParametersDefinitionProperty>[\s\S]*?<\/hudson\.model\.ParametersDefinitionProperty>/, property)
+      .replace(/<description>[\s\S]*?<\/description>/, `<description>${xmlEscape('Periksa PR menuju development dari branch mana pun dalam repo tim, kode branch ilyas terbaru dari GitHub, atau percobaan alat dengan contoh OWASP. Nomor versi kode tercantum pada build dan laporan reports/source. Tidak melakukan merge atau deploy produksi.')}</description>`);
+    if (after === before) throw new Error('Cannot locate parameter definitions.');
+    const backup = path.join(root, '.runtime', 'jenkins-build-form'); mkdirSync(backup, { recursive: true });
+    writeFileSync(path.join(backup, 'before.xml'), before);
+    await request(`${jobPath}/config.xml`, { method: 'POST', headers: { 'Content-Type': 'application/xml' }, body: after });
+    const verified = await (await request(`${jobPath}/config.xml`)).text();
+    if (!verified.includes('<name>PILIH_PEMERIKSAAN</name>') || verified.includes('<name>PROOF_GATE</name>') || verified.includes('<name>RUN_MODE</name>')) throw new Error('Build form verification failed.');
+    console.log(`Build form updated: PR -> development; latest ilyas source fetched per branch build; pipeline definition pinned to ${revision}.`);
   } else if (command === 'configure-main') {
     const before = await (await request('/job/reservasi-pipeline/config.xml')).text();
     if (!before.includes('CpsScmFlowDefinition') || !before.includes('<scriptPath>Jenkinsfile.dev</scriptPath>') || !before.includes('<name>*/ilyas</name>')) {
@@ -237,15 +261,17 @@ println('Main pipeline: ' + main.fullName)
     console.log(`Queued: ${response.headers.get('location') || 'check job queue'}`);
   } else if (command === 'build-validation') {
     const values = await publicConfiguration();
-    const body = new URLSearchParams({ ...values, RUN_MODE: 'full', PR_NUMBER: '', PR_FORCE_RESCAN: 'false', PROOF_GATE: 'none', RUN_STRIDE_DATABASE: 'false', STRIDE_DB_HOST: '' });
+    const body = new URLSearchParams({ ...values, PILIH_PEMERIKSAAN: 'Periksa kode branch ilyas terbaru', NOMOR_PR: '', PERIKSA_ULANG_PR: 'false' });
     const response = await request(`${jobPath}/buildWithParameters`, { method: 'POST', body });
     console.log(`Validation queued with existing public configuration: ${response.headers.get('location') || 'check job queue'}`);
   } else if (command === 'build-proof') {
     const gate = process.argv[4] || 'secret';
     if (!['secret', 'sast', 'owasp'].includes(gate)) throw new Error('Invalid proof gate.');
+    if (job === 'reservasi-pipeline' && gate !== 'owasp') throw new Error('The main build form offers one detector demonstration: owasp.');
     // Parameters are registered on the first build; initialize with a normal build if needed.
     const values = job === 'reservasi-pipeline' ? await publicConfiguration() : {};
-    const response = await request(`${jobPath}/buildWithParameters`, { method: 'POST', body: new URLSearchParams({ ...values, RUN_MODE: 'full', PROOF_GATE: gate, RUN_STRIDE_DATABASE: 'false', STRIDE_DB_HOST: '' }) });
+    const parameters = job === 'reservasi-pipeline' ? { PILIH_PEMERIKSAAN: 'Coba alat pendeteksi: contoh masalah OWASP', NOMOR_PR: '', PERIKSA_ULANG_PR: 'false' } : { RUN_MODE: 'full', PROOF_GATE: gate, RUN_STRIDE_DATABASE: 'false', STRIDE_DB_HOST: '' };
+    const response = await request(`${jobPath}/buildWithParameters`, { method: 'POST', body: new URLSearchParams({ ...values, ...parameters }) });
     console.log(`Proof queued: ${response.headers.get('location') || 'check job queue'}`);
   } else if (command === 'automation-state') {
     const classic = await (await request('/job/reservasi-pipeline/config.xml')).text();
@@ -288,6 +314,11 @@ println('Main pipeline: ' + main.fullName)
     if (command === 'verify-proof') {
       const gate = process.argv[5];
       if (!['secret', 'sast', 'owasp'].includes(gate)) throw new Error('Provide exact proof gate: secret, sast, or owasp.');
+      if (job === 'reservasi-pipeline' && gate === 'owasp' && build.result === 'SUCCESS') {
+        const demo = await (await request(`${jobPath}/${number}/artifact/reports/sast/hasil-percobaan.json`)).json();
+        evidence.proof = { gate, ...demo, verified: !build.building && demo.passed === true && demo.kind === 'contoh-bukan-aplikasi' && demo.detectedCategories === 10 };
+        if (!evidence.proof.verified) process.exitCode = 1;
+      } else {
       const category = gate === 'secret' ? 'secrets' : 'sast';
       const scan = await (await request(`${jobPath}/${number}/artifact/reports/${category}/summary.json`)).json();
       const consoleText = await (await request(`${jobPath}/${number}/consoleText`)).text();
@@ -304,6 +335,7 @@ println('Main pipeline: ' + main.fullName)
         evidence.proof.verified = evidence.proof.verified && mapping.standard === 'OWASP Top 10:2025' && evidence.proof.owaspCategoriesDetected === 10;
       }
       if (!evidence.proof.verified) process.exitCode = 1;
+      }
     }
     const destination = path.join(reportDir, `${job.replaceAll('/', '-')}-${number}.json`);
     writeFileSync(destination, JSON.stringify(evidence, null, 2) + '\n');

@@ -9,24 +9,22 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10'))
     }
 
-    // Local Jenkins polls GitHub PR metadata; only changed ilyas -> development PRs are scanned.
+    // Poll changed PRs into development from any branch in the same repository.
     // The controller pins this pipeline/tooling to a reviewed commit; PR source is data only.
     triggers { cron('H/5 * * * *') }
 
     parameters {
-        choice(name: 'RUN_MODE', choices: ['full', 'pr'], description: 'full = CI manual pada revisi toolchain yang disetujui; pr = cek PR ilyas ke development. Timer selalu memilih pr.')
-        string(name: 'PR_NUMBER', defaultValue: '', trim: true, description: 'Opsional: nomor PR origin ilyas ke development untuk pemeriksaan manual.')
-        booleanParam(name: 'PR_FORCE_RESCAN', defaultValue: false, description: 'Pindai ulang PR walaupun head/base belum berubah.')
-        choice(name: 'PROOF_GATE', choices: ['none', 'secret', 'sast', 'owasp'],
-            description: 'none = normal; secret/sast/owasp = fixture negatif. Khusus RUN_MODE=full; FAILURE diharapkan.')
+        choice(name: 'PILIH_PEMERIKSAAN', choices: [
+            'Periksa PR menuju development',
+            'Periksa kode branch ilyas terbaru',
+            'Coba alat pendeteksi: contoh masalah OWASP'
+        ], description: 'PR: periksa kode (SAST) dan kerentanan paket pendukung pada gabungan PR dengan development. Branch ilyas terbaru: ambil kode terbaru yang sudah di-push ke ilyas saat tahap pengambilan kode; jalankan pemeriksaan, build, dan uji lokal. Perubahan yang belum di-push tidak ikut. Percobaan OWASP: hanya contoh masalah untuk mencoba alat, bukan aplikasi. Tidak deploy produksi.')
+        string(name: 'NOMOR_PR', defaultValue: '', trim: true, description: 'Hanya untuk Periksa PR. Isi nomor PR terbuka yang tujuannya development, dari branch mana pun dalam repo yang sama; kosong = cari otomatis. PR ke main belum didukung.')
+        booleanParam(name: 'PERIKSA_ULANG_PR', defaultValue: true, description: 'Hanya untuk Periksa PR manual: periksa lagi meskipun kodenya belum berubah. Jadwal otomatis hanya memeriksa perubahan baru.')
         string(name: 'SUPABASE_URL', defaultValue: params.SUPABASE_URL ?: env.CI_SUPABASE_URL ?: '', trim: true,
-            description: 'Public Supabase project URL for this build.')
+            description: 'Pengaturan aplikasi tersimpan. Biarkan nilainya; dipakai saat memeriksa kode branch ilyas terbaru.')
         string(name: 'SUPABASE_PUBLIC_KEY', defaultValue: params.SUPABASE_PUBLIC_KEY ?: env.CI_SUPABASE_PUBLIC_KEY ?: '', trim: true,
-            description: 'Public anon/publishable key. Never enter a service_role/secret key.')
-        booleanParam(name: 'RUN_STRIDE_DATABASE', defaultValue: false,
-            description: 'Opt-in: write synthetic fixtures to an approved development DB, then ROLLBACK. Read the STRIDE guide first.')
-        string(name: 'STRIDE_DB_HOST', defaultValue: '', trim: true,
-            description: 'Approved test database hostname only; never enter a password here.')
+            description: 'Kunci publik aplikasi tersimpan. Biarkan nilainya; jangan isi password atau kunci rahasia.')
     }
 
     environment {
@@ -41,12 +39,15 @@ pipeline {
                 script {
                     if (isUnix()) { error('Jenkinsfile.dev requires a Windows agent.') }
                     def timer = !currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause').isEmpty()
-                    env.CI_RUN_MODE = timer ? 'pr' : (params.RUN_MODE ?: 'full')
+                    def pilihan = params.PILIH_PEMERIKSAAN ?: 'Periksa PR menuju development'
+                    def modes = ['Periksa PR menuju development': 'pr', 'Periksa kode branch ilyas terbaru': 'full', 'Coba alat pendeteksi: contoh masalah OWASP': 'demo']
+                    if (!modes.containsKey(pilihan)) { error('Pilihan pemeriksaan tidak dikenal.') }
+                    env.CI_RUN_MODE = timer ? 'pr' : modes[pilihan]
+                    env.PROOF_GATE = env.CI_RUN_MODE == 'demo' ? 'owasp' : 'none'
+                    env.PR_NUMBER = timer ? '' : (params.NOMOR_PR ?: '')
+                    env.PR_FORCE_RESCAN = !timer && params.PERIKSA_ULANG_PR ? 'true' : 'false'
+                    env.RUN_STRIDE_DATABASE = 'false'
                     env.PR_SCAN_REQUIRED = 'false'
-                    if (!(env.CI_RUN_MODE in ['full', 'pr'])) { error('Unknown RUN_MODE') }
-                    if (env.CI_RUN_MODE == 'pr' && ((params.PROOF_GATE ?: 'none') != 'none' || params.RUN_STRIDE_DATABASE)) {
-                        error('PR source-only scans cannot run proof fixtures or database tests.')
-                    }
                 }
                 bat '''
                     whoami
@@ -70,9 +71,12 @@ pipeline {
                     def checked = checkout scm
                     env.GIT_COMMIT = checked.GIT_COMMIT
                     if (!(env.GIT_COMMIT ?: '').matches('[a-f0-9]{40}')) { error('Trusted checkout did not return an exact revision.') }
-                    currentBuild.description = env.CI_RUN_MODE == 'pr' ? 'PR discovery: ilyas -> development' : (params.PROOF_GATE ?: 'none') == 'none'
-                        ? 'CI lengkap: source, infra, DAST, dan operasi'
-                        : "Uji fail-fast ${params.PROOF_GATE}: FAILURE diharapkan"
+                    env.PIPELINE_COMMIT = env.GIT_COMMIT
+                    currentBuild.description = env.CI_RUN_MODE == 'pr' ? 'Cari PR menuju development (branch asal bebas dalam repo)' : env.CI_RUN_MODE == 'demo'
+                        ? 'Percobaan alat: contoh OWASP, bukan aplikasi'
+                        : 'Mengambil kode branch ilyas terbaru dari GitHub'
+                    echo "Versi pengaturan pipeline Jenkins: ${env.PIPELINE_COMMIT}."
+                    echo env.CI_RUN_MODE == 'pr' ? 'Kode yang diperiksa: gabungan branch asal PR dan development; nama branch, nomor PR, dan versi kode dicatat pada laporan PR.' : env.CI_RUN_MODE == 'demo' ? 'Yang diperiksa hanya contoh kode bermasalah; aplikasi tidak dibangun atau dijalankan.' : 'Kode aplikasi akan diambil dari ujung branch ilyas terbaru, terpisah dari versi pengaturan pipeline.'
                 }
                 dir('reports') { deleteDir() }
                 bat 'node scripts/ci/proof-fixture.mjs clean'
@@ -87,7 +91,39 @@ pipeline {
             }
         }
 
-        stage('Discover Development PR') {
+        stage('Ambil kode branch ilyas terbaru') {
+            when { expression { env.CI_RUN_MODE == 'full' } }
+            steps {
+                script {
+                    // Explicitly fetch the selected trusted team branch. The pipeline
+                    // definition remains pinned; PR mode never executes this checkout.
+                    def source = checkout([$class: 'GitSCM',
+                        branches: [[name: 'refs/remotes/origin/ilyas']],
+                        userRemoteConfigs: [[url: 'https://github.com/Z0J0-hub/Booking_Ruangan-Lab.git',
+                            refspec: '+refs/heads/ilyas:refs/remotes/origin/ilyas']],
+                        extensions: [[$class: 'CloneOption', shallow: false, noTags: true, honorRefspec: true]]])
+                    env.GIT_COMMIT = source.GIT_COMMIT
+                    if (!(env.GIT_COMMIT ?: '').matches('[a-f0-9]{40}')) { error('Tidak berhasil memastikan versi kode branch ilyas. Pemeriksaan dihentikan.') }
+                    def fetched = bat(returnStdout: true, script: '@echo off\ngit rev-parse refs/remotes/origin/ilyas').trim()
+                    if (fetched != env.GIT_COMMIT) { error('Kode yang diambil tidak sama dengan ujung branch ilyas. Pemeriksaan dihentikan.') }
+                    currentBuild.description = "Branch ilyas terbaru: ${env.GIT_COMMIT.take(8)}"
+                    echo "Kode yang diperiksa: branch ilyas, versi ${env.GIT_COMMIT}, dari GitHub saat pengambilan kode."
+                    writeFile file: 'reports/source/summary.json', text: """{
+  "mode": "latest-branch",
+  "repository": "Z0J0-hub/Booking_Ruangan-Lab",
+  "branch": "ilyas",
+  "commit": "${env.GIT_COMMIT}",
+  "pipelineCommit": "${env.PIPELINE_COMMIT}"
+}
+"""
+                    writeFile file: 'reports/source/summary.txt', text: "Kode yang diperiksa: branch ilyas terbaru saat pengambilan kode.\nVersi kode: ${env.GIT_COMMIT}\nVersi pengaturan pipeline: ${env.PIPELINE_COMMIT}\nPerubahan lokal yang belum di-push tidak ikut. Commit yang masuk setelah pengambilan kode ikut build berikutnya.\n"
+                }
+                bat 'node scripts/ci/proof-fixture.mjs clean'
+            }
+            post { always { archiveArtifacts artifacts: 'reports/source/*', allowEmptyArchive: true, fingerprint: true } }
+        }
+
+        stage('Cari PR menuju development') {
             when { expression { env.CI_RUN_MODE == 'pr' } }
             steps {
                 script {
@@ -95,7 +131,7 @@ pipeline {
                     if (code == 3) {
                         currentBuild.result = 'NOT_BUILT'
                     } else if (code != 0) {
-                        error('PR discovery failed. No passing PR result is claimed.')
+                        error('Tidak bisa memeriksa PR. Pastikan nomor PR benar, masih terbuka, tujuannya development, dan branch asal berada dalam repo yang sama. Lihat reports/pr/plan.json untuk rincian.')
                     } else { env.PR_SCAN_REQUIRED = 'true' }
                     currentBuild.description = bat(returnStdout: true, script: '@echo off\nnode scripts/pr/plan.mjs --describe').trim()
                 }
@@ -103,19 +139,19 @@ pipeline {
         }
 
         stage('Pipeline Policy') {
-            when { expression { env.CI_RUN_MODE == 'full' || env.PR_SCAN_REQUIRED == 'true' } }
+            when { expression { env.CI_RUN_MODE != 'pr' || env.PR_SCAN_REQUIRED == 'true' } }
             steps {
                 // Remove generated reports from older runs on reused agents.
                 // Also remove a fixture left by an interrupted proof before scanning source.
                 bat 'node scripts/ci/proof-fixture.mjs clean'
-                withEnv(["RUN_STRIDE_DATABASE=${params.RUN_STRIDE_DATABASE}", "PROOF_GATE=${params.PROOF_GATE ?: 'none'}", "CHANGE_TARGET=${env.CI_RUN_MODE == 'pr' ? 'development' : env.CHANGE_TARGET ?: ''}"]) {
+                withEnv(['RUN_STRIDE_DATABASE=false', "PROOF_GATE=${env.PROOF_GATE}", "CHANGE_TARGET=${env.CI_RUN_MODE == 'pr' ? 'development' : env.CHANGE_TARGET ?: ''}"]) {
                     bat 'node scripts/ci/policy.mjs'
                 }
             }
         }
 
         stage('Install Dependencies') {
-            when { expression { env.CI_RUN_MODE == 'full' || env.PR_SCAN_REQUIRED == 'true' } }
+            when { expression { env.CI_RUN_MODE != 'pr' || env.PR_SCAN_REQUIRED == 'true' } }
             steps {
                 bat '''
                     call npm.cmd ci --no-audit --no-fund
@@ -126,7 +162,7 @@ pipeline {
         }
 
         stage('SAST Toolchain') {
-            when { expression { env.CI_RUN_MODE == 'full' || env.PR_SCAN_REQUIRED == 'true' } }
+            when { expression { env.CI_RUN_MODE != 'pr' || env.PR_SCAN_REQUIRED == 'true' } }
             steps { bat 'call npm.cmd run ci:sast:setup' }
         }
 
@@ -145,7 +181,7 @@ pipeline {
         }
 
         stage('CI Module Tests') {
-            when { expression { env.CI_RUN_MODE == 'full' || env.PR_SCAN_REQUIRED == 'true' } }
+            when { expression { env.CI_RUN_MODE != 'pr' || env.PR_SCAN_REQUIRED == 'true' } }
             steps {
                 bat '''
                     @echo off
@@ -155,10 +191,10 @@ pipeline {
             }
         }
 
-        stage('Prepare Fail-Fast Proof') {
-            when { expression { env.CI_RUN_MODE == 'full' && (params.PROOF_GATE ?: 'none') != 'none' } }
+        stage('Siapkan contoh OWASP - bukan aplikasi') {
+            when { expression { env.CI_RUN_MODE == 'demo' } }
             steps {
-                withEnv(["PROOF_GATE=${params.PROOF_GATE}"]) {
+                withEnv(['PROOF_GATE=owasp']) {
                     bat '''
                         @echo off
                         node scripts/ci/proof-fixture.mjs %PROOF_GATE%
@@ -187,7 +223,7 @@ pipeline {
             }
         }
 
-        stage('Dependency Audit') {
+        stage('Audit Dependency Branch') {
             when { expression { env.CI_RUN_MODE == 'full' } }
             steps {
                 bat '''
@@ -204,11 +240,20 @@ pipeline {
             }
         }
 
+        stage('SAST dan Audit Dependency PR') {
+            when { expression { env.CI_RUN_MODE == 'pr' && env.PR_SCAN_REQUIRED == 'true' } }
+            steps { bat 'call npm.cmd run ci:pr:scan' }
+            post { always { archiveArtifacts artifacts: 'reports/sast/*,reports/audit/*', allowEmptyArchive: true, fingerprint: true } }
+        }
+
         stage('SAST') {
-            when { expression { env.CI_RUN_MODE == 'full' || env.PR_SCAN_REQUIRED == 'true' } }
+            when { expression { env.CI_RUN_MODE != 'pr' } }
             steps {
                 script {
-                    if (env.CI_RUN_MODE == 'pr') { bat 'call npm.cmd run ci:pr:scan' }
+                    if (env.CI_RUN_MODE == 'demo') {
+                        bat 'node scripts/ci/owasp-demo.mjs'
+                        currentBuild.description = 'Percobaan BERHASIL: contoh masalah 10/10 kelompok OWASP terdeteksi dan ditolak; bukan hasil aplikasi'
+                    }
                     else { bat 'call npm.cmd run ci:sast' }
                 }
             }
@@ -258,7 +303,7 @@ pipeline {
             when {
                 allOf {
                     expression { env.CI_RUN_MODE == 'full' }
-                    expression { params.RUN_STRIDE_DATABASE }
+                    expression { env.RUN_STRIDE_DATABASE == 'true' }
                     branch 'development'
                     not { changeRequest() }
                 }
@@ -325,7 +370,7 @@ pipeline {
             when { expression { env.CI_RUN_MODE == 'full' } }
             steps {
                 script {
-                    if ((params.PROOF_GATE ?: 'none') != 'none') {
+                    if ((env.PROOF_GATE ?: 'none') != 'none') {
                         error('Proof tidak terblokir oleh scanner. Artifact tidak boleh dipromosikan.')
                     }
                 }

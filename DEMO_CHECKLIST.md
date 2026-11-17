@@ -1,7 +1,11 @@
 # Urutan demo dan bukti penilaian
 
-Penggunaan sekarang: reservasi-pipeline, PROOF_GATE=none (CI lengkap), secret/sast
-(demo negatif). Job lokal di tautan bukti lama sudah nonaktif di arsip-reservasi;
+Penggunaan sekarang: reservasi-pipeline, PILIH_PEMERIKSAAN. Pilih kode branch ilyas
+terbaru untuk mengambil source terbaru dari GitHub; versi yang benar-benar
+diperiksa ada pada keterangan build dan reports/source/summary.txt. Pilih percobaan alat untuk
+memeriksa contoh OWASP, bukan aplikasi. Percobaan berhasil (hijau) hanya jika
+semua contoh terdeteksi dan ditolak. Lihat [panduan](PR_OWASP_2025.md).
+Job lokal di tautan bukti lama sudah nonaktif di arsip-reservasi;
 nomor buildnya tetap menjadi bukti historis.
 
 Gunakan data/akun tes dan jelaskan batas cakupan setiap alat. Tidak perlu

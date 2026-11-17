@@ -2,13 +2,20 @@
 
 Pembaruan PR development + SAST OWASP 2025: [PR_OWASP_2025.md](PR_OWASP_2025.md).
 Mode PR memakai polling metadata GitHub dan memindai source PR sebagai data.
-Toolchain/Jenkinsfile dipin ke commit yang direview; pembaruan pin dilakukan admin.
+PR menuju development juga diaudit paket frontend-nya dari lockfile merge yang sama,
+tanpa memasang dependency atau menjalankan skrip PR; temuan tinggi/kritis memblokir.
+Jenkinsfile dan toolchain PR dipin ke commit yang direview; pembaruan pin dilakukan admin.
+Pilihan branch mengambil kode terbaru ilyas secara terpisah pada setiap build.
 Laporan SAST HTML, mapping kategori, dan identitas merge tersedia di Artifacts Jenkins.
 
 Jenkins sehari-hari cukup **reservasi-pipeline** dengan `Jenkinsfile.dev` dari
-branch `ilyas`. `PROOF_GATE=none` menjalankan CI lengkap; `secret`/`sast` untuk uji
-fail-fast yang sengaja menghasilkan FAILURE. Job percobaan lama berada dalam
-folder arsip-reservasi dan nonaktif. Alur Git tetap ilyas -> PR development.
+branch asal `ilyas`. **PILIH_PEMERIKSAAN**
+menawarkan pemeriksaan PR dari branch mana pun dalam repo tim menuju development,
+kode branch ilyas terbaru dari GitHub (tanpa perlu PR),
+atau percobaan alat memakai contoh OWASP (bukan aplikasi). Percobaan hijau berarti
+contoh bermasalah berhasil ditolak. Job percobaan lama berada dalam
+folder arsip-reservasi dan nonaktif. Anggota kelompok dapat mengajukan PR dari
+branch masing-masing menuju development.
 
 Dokumen aktif: [arsitektur](ARCHITECTURE.md), [operasi dan demo rollback Windows](OPERATIONS.md),
 [status seluruh rubrik](RUBRIK_STATUS.md), serta [CI/PR/DAST](CI_PR_DAST.md).
