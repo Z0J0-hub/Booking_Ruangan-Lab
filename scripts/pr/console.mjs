@@ -1,4 +1,5 @@
 import { coverage } from '../sast/semgrep.mjs';
+import { auditErrorExplanation } from './audit.mjs';
 
 // Allowlisted metadata only; no raw process output, matched source or credentials.
 const safe = value => String(value ?? '-').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 400);
@@ -32,7 +33,11 @@ export function auditConsole(report) {
     `Hasil: ${resultLabel(report)}`,
     `Temuan: kritis=${counts.critical ?? '-'}, tinggi=${counts.high ?? '-'}, sedang=${counts.moderate ?? '-'}, rendah=${counts.low ?? '-'}, informasi=${counts.info ?? '-'}.`];
   if (report.status === 'passed' && findings.length) lines.push('Lolos tidak berarti nol masalah: temuan sedang/rendah berikut tetap perlu ditinjau.');
-  if (report.code) lines.push(`Kode error: ${safe(report.code)}`);
+  if (report.attempts) lines.push(`Percobaan audit: ${report.attempts.length}/${report.limits?.maxAttempts ?? 2}.`);
+  if (report.code) lines.push(`Kode error: ${safe(report.code)}`, `Alasan: ${auditErrorExplanation(report.code)}`);
+  for (const attempt of report.attempts || []) {
+    lines.push(`  Percobaan ${attempt.attempt}: ${attempt.status}${attempt.code ? ' (' + safe(attempt.code) + ')' : ''}; ${(attempt.elapsedMs / 1000).toFixed(1)} detik.`);
+  }
   for (const finding of findings.slice(0, 20)) {
     lines.push(`- ${safe(finding.package)} | ${levels[finding.severity] || 'tidak diketahui'} | ${finding.direct ? 'paket langsung' : 'paket tidak langsung'} | saran perbaikan npm: ${finding.fixAvailable ? 'tersedia; perlu review' : 'belum tersedia'}`);
     if (finding.titles?.length) lines.push(`  Masalah: ${safe(finding.titles.join('; '))}`);

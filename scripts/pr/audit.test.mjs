@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runPrAudit, validateAuditInput, auditOutcome } from './audit.mjs';
+import { runPrAudit, validateAuditInput, auditOutcome, auditLimits } from './audit.mjs';
 import { combinePrChecks } from './scan.mjs';
 
 function fixture(t) {
@@ -83,4 +83,40 @@ test('published HTML escapes advisory text and omits arbitrary raw scanner field
   const html = readFileSync(path.join(root, 'reports/audit/summary.html'), 'utf8');
   assert.equal(html.includes('<script>'), false); assert.ok(html.includes('&lt;script&gt;'));
   assert.equal(html.includes('do-not-publish-this'), false);
+});
+
+test('a process timeout retries once and can recover with a valid audit; safe network limits remain enforced', t => {
+  const { root } = fixture(t); let calls = 0; const waits = [];
+  const result = runPrAudit({ source: root, pause: ms => waits.push(ms), runner(_exe, args, options) {
+    calls++;
+    assert.ok(args.includes('--fetch-timeout=30000')); assert.ok(args.includes('--fetch-retries=0'));
+    assert.ok(args.includes('--strict-ssl=true')); assert.ok(args.includes('--ignore-scripts'));
+    assert.equal(options.timeout, 90000);
+    return calls === 1 ? { error: Object.assign(new Error('private timeout details'), { code: 'ETIMEDOUT' }), signal: 'SIGTERM', status: null } : response({ moderate: 2 });
+  } });
+  assert.equal(calls, 2); assert.deepEqual(waits, [2000]);
+  assert.equal(result.status, 'passed'); assert.equal(result.exitCode, 0); assert.equal(result.code, undefined);
+  assert.deepEqual(result.attempts.map(attempt => attempt.status), ['error', 'passed']);
+  assert.equal(result.attempts[0].code, 'PR_AUDIT_TIMEOUT');
+  assert.equal(readFileSync(path.join(root, 'reports/audit/summary.json'), 'utf8').includes('private timeout details'), false);
+});
+test('persistent timeouts stop after two attempts and never become a clean audit', t => {
+  const { root } = fixture(t); let calls = 0;
+  const report = runPrAudit({ source: root, pause: () => {}, runner: () => { calls++; return { error: { code: 'ETIMEDOUT' }, status: null }; } });
+  assert.equal(calls, auditLimits.maxAttempts); assert.equal(report.status, 'error'); assert.equal(report.exitCode, 2);
+  assert.equal(report.code, 'PR_AUDIT_TIMEOUT'); assert.deepEqual(report.vulnerabilities, {});
+});
+test('transient npm network/registry errors retry but vulnerability findings, TLS errors and malformed reports do not', t => {
+  const { root } = fixture(t);
+  for (const error of [{ code: 'ECONNRESET' }, { code: 'EAI_AGAIN' }, { code: 'E503' }, { statusCode: 429 }]) {
+    let calls = 0;
+    const report = runPrAudit({ source: root, pause: () => {}, runner: () => ++calls === 1 ? { status: 1, stdout: JSON.stringify({ error }) } : response() });
+    assert.equal(report.status, 'passed'); assert.equal(calls, 2);
+  }
+  for (const execution of [response({ high: 1 }), response({ critical: 1 }), { status: 1, stdout: 'invalid-json' },
+    { status: 1, stdout: JSON.stringify({ error: { code: 'SELF_SIGNED_CERT_IN_CHAIN' } }) }, { signal: 'SIGTERM', status: null }]) {
+    let calls = 0;
+    const report = runPrAudit({ source: root, pause: () => assert.fail('Must not retry'), runner: () => { calls++; return execution; } });
+    assert.equal(calls, 1); assert.notEqual(report.status, 'passed');
+  }
 });
