@@ -9,6 +9,7 @@ import { runInfra } from '../infra/scan.mjs';
 import { runPrBuild } from './build.mjs';
 import { runStride } from '../stride/run.mjs';
 import { cleanupPr } from './cleanup.mjs';
+import { auditConsole, sastConsole } from './console.mjs';
 
 const runtime = path.join(projectRoot, '.runtime', 'pr');
 const contextFile = path.join(runtime, 'active.local.json');
@@ -26,8 +27,8 @@ function context() {
 function publish(state, category) {
   const source = path.join(state.source, 'reports', category);
   const destination = path.join(projectRoot, 'reports', category); mkdirSync(destination, { recursive: true });
-  const allowed = { infra: ['summary.json'], audit: ['summary.json', 'summary.txt', 'summary.html', 'frontend.txt'],
-    sast: ['summary.json', 'summary.txt', 'summary.html', 'findings.json', 'coverage.json', 'semgrep.json'], build: ['summary.json', 'summary.txt'], stride: ['summary.json', 'summary.txt', 'junit.xml'] };
+  const allowed = { infra: ['summary.json'], audit: ['summary.json', 'summary.txt', 'summary.html', 'frontend.txt', 'ringkasan.txt'],
+    sast: ['summary.json', 'summary.txt', 'summary.html', 'findings.json', 'coverage.json', 'semgrep.json', 'ringkasan.txt'], build: ['summary.json', 'summary.txt'], stride: ['summary.json', 'summary.txt', 'junit.xml'] };
   for (const name of allowed[category]) {
     const file = path.join(source, name);
     if (existsSync(file) && lstatSync(file).isFile() && !lstatSync(file).isSymbolicLink()) cpSync(file, path.join(destination, name));
@@ -63,11 +64,17 @@ export async function executeCheck(command) {
   }
   if (!checks.includes(command)) throw new Error('UNKNOWN_PR_CHECK');
   let result;
+  if (command === 'audit' || command === 'sast') console.log(`Mulai ${command === 'audit' ? 'Dependency Audit' : 'SAST'}: PR #${state.number}, ${state.branch} -> development, versi gabungan ${state.merge.slice(0, 8)}.`);
   if (command === 'infra') result = runInfra('config', { sourceRoot: state.source });
   if (command === 'audit') result = runPrAudit({ source: state.source, provenance });
   if (command === 'sast') result = await runSast({ root: state.source });
   if (command === 'build') result = runPrBuild({ source: state.source, files: state.files, provenance });
   if (command === 'stride') result = await runStride({ env: { ...process.env, GIT_COMMIT: state.merge }, reportDir: path.join(state.source, 'reports', 'stride') });
+  if (command === 'audit' || command === 'sast') {
+    const summary = command === 'audit' ? auditConsole(result) : sastConsole(result);
+    console.log(summary);
+    writeFileSync(path.join(state.source, 'reports', command, 'ringkasan.txt'), summary + '\n');
+  }
   publish(state, command);
   report.checks[command] = { status: result.status, exitCode: result.exitCode, code: result.code || null,
     ...(command === 'audit' ? { vulnerabilities: result.vulnerabilities } : {}), ...(command === 'sast' ? { findings: result.findings.length } : {}) };

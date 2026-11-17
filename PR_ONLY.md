@@ -53,6 +53,18 @@ membuktikan migrasi SQL baru pada PR benar. Migrasi tidak diterapkan otomatis.
 
 ## Tempat memeriksa hasil
 
+**Console Output** pada tahap Dependency Audit dan SAST sekarang menampilkan
+ringkasan bahasa Indonesia: sumber PR/versi merge, cakupan yang diperiksa, jumlah
+paket/file, jumlah temuan, batas pemblokiran, serta alasan lolos/ditolak/error.
+Audit menampilkan paket dan tingkat masalah; SAST menampilkan pola setiap kategori
+OWASP dan lokasi file/baris jika ditemukan masalah. Ringkasan membatasi daftar
+temuan pertama agar log tetap terbaca; laporan lengkap tetap tersedia.
+
+Ringkasan yang sama disimpan sebagai `reports/audit/ringkasan.txt` dan
+`reports/sast/ringkasan.txt`. Tidak mencetak cuplikan kode, kecocokan rahasia,
+credential, atau output mentah scanner. Entri paket pada lockfile mencakup paket
+opsional/tidak langsung dan bukan jumlah paket yang dipasang.
+
 Pada nomor build, buka **Artifacts**:
 
 - reports/pr/summary.json: nomor PR, branch asal/tujuan, head/base/merge, versi alat,
