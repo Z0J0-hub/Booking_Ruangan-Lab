@@ -9,16 +9,22 @@ export function isBuildInput(name) {
   return name.startsWith('src/') || name.startsWith('public/') || (!name.includes('/') && (/\.(?:json|js|mjs|cjs|ts|html|css)$/.test(name) || name.startsWith('.env')));
 }
 export function validateReviewedBuild(source, files, trustedRoot = projectRoot) {
-  const tracked = spawnSync('git', ['ls-files', '-z'], { cwd: trustedRoot, encoding: 'utf8', windowsHide: true, timeout: 30_000 });
+  const tracked = spawnSync('git', ['ls-files', '--stage', '-z'], { cwd: trustedRoot, encoding: 'utf8', windowsHide: true, timeout: 30_000 });
   if (tracked.status !== 0) throw new Error('BUILD_REVIEW_BASELINE_UNAVAILABLE');
-  const expected = tracked.stdout.split('\0').filter(Boolean).filter(isBuildInput).sort();
+  const approvedBlobs = new Map(tracked.stdout.split('\0').filter(Boolean).map(entry => {
+    const match = /^(?:100644|100755) ([a-f0-9]{40}) 0\t(.+)$/.exec(entry);
+    if (!match) throw new Error('UNSUPPORTED_BUILD_BASELINE_ENTRY');
+    return [match[2], match[1]];
+  }));
+  const expected = [...approvedBlobs.keys()].filter(isBuildInput).sort();
   const actual = files.filter(isBuildInput).sort();
   if (JSON.stringify(expected) !== JSON.stringify(actual)) throw new Error('BUILD_SOURCE_REVIEW_REQUIRED');
   for (const name of actual) {
-    const input = path.join(source, name); const approved = path.join(trustedRoot, name);
+    const input = path.join(source, name);
     if (!lstatSync(input).isFile() || lstatSync(input).isSymbolicLink()) throw new Error('UNSAFE_BUILD_INPUT');
-    const hash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
-    if (hash(input) !== hash(approved)) throw new Error('BUILD_SOURCE_REVIEW_REQUIRED');
+    const bytes = readFileSync(input);
+    const blob = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+    if (blob !== approvedBlobs.get(name)) throw new Error('BUILD_SOURCE_REVIEW_REQUIRED');
   }
 }
 export function runPrBuild({ source, files, provenance }) {
