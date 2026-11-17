@@ -19,11 +19,19 @@ Pada build PR, periksa:
 
 1. Description: nomor PR dan head commit.
 2. **Cari PR menuju development**: pemilihan PR yang masih terbuka dari branch mana pun dalam repo.
-3. **SAST**: Semgrep CE 1.185.0 dan ESLint security.
+3. **SAST dan Audit Dependency PR**: pemeriksaan kode dengan Semgrep/ESLint dan pemeriksaan paket frontend dengan npm audit.
 4. **Artifacts**: reports/pr/plan.json dan summary.json menyebut nomor PR,
    head/base, merge commit yang diuji, dan revisi scanner.
 5. **Artifacts/reports/sast/summary.html**: laporan yang bisa dibaca;
    coverage.json memetakan kategori/rule, findings.json memuat file/baris/CWE.
+6. **Artifacts/reports/audit/summary.html**: daftar paket bermasalah beserta
+   tingkatnya. summary.json mencatat nomor PR, head/base/merge yang diaudit dan
+   jumlah temuan tinggi/kritis/sedang/rendah. summary.txt dan frontend.txt juga tersedia.
+
+PR lolos hanya jika **SAST dan audit dependency keduanya lolos**. Audit memblokir
+temuan HIGH/CRITICAL; temuan sedang/rendah tetap dicatat. Error jaringan, lockfile
+hilang/rusak, ketidaksesuaian package.json dan lockfile, atau laporan npm tidak valid
+menghasilkan error, bukan hasil lolos. Error dapat dicoba ulang oleh jadwal berikutnya.
 
 Hasil hanya tersedia di Jenkins. Runner publik ini belum mengirim status/check
 ke GitHub dan belum menetapkan required checks/branch protection. Itu memerlukan
@@ -36,7 +44,7 @@ Di **Build with Parameters**, cukup isi **PILIH_PEMERIKSAAN**:
 
 | Pilihan | Kode yang diperiksa | Cara membaca hasil |
 |---|---|---|
-| Periksa PR menuju development | Gabungan kode branch asal PR dan development; PR harus masih terbuka dan kedua branch dalam repo yang sama | Hijau = tidak ada temuan dari aturan yang dipakai. Merah = ada temuan atau pemeriksaan error. |
+| Periksa PR menuju development | Gabungan kode branch asal PR dan development; SAST serta audit dependency frontend | Hijau = SAST lolos dan tidak ada temuan paket tingkat tinggi/kritis. Merah = ada masalah yang memblokir atau pemeriksaan error. |
 | Periksa kode branch ilyas terbaru | Versi terbaru yang sudah di-push ke branch ilyas, diambil saat tahap pengambilan kode | Tidak ditambahkan contoh kode bermasalah. Tetap menjalankan pemeriksaan lain, build, DAST lokal dan latihan pemulihan. |
 | Coba alat pendeteksi: contoh masalah OWASP | Hanya satu file contoh sementara, bukan kode aplikasi | Hijau = semua 15 pola contoh dari 10 kelompok masalah terdeteksi dan ditolak. Merah = alat error atau ada contoh yang belum terdeteksi. |
 
@@ -84,6 +92,21 @@ Mode PR hanya menguji source merge dengan scanner terpercaya. Tidak menjalankan
 package.json scripts, npm install, Jenkinsfile, auth/database, build, atau DAST
 dari PR. Install/test yang terlihat di build PR adalah milik toolchain yang disetujui.
 Mode PR tidak boleh diklaim sebagai seluruh CI aplikasi/tes integrasi PR.
+
+Audit PR menggunakan package.json/package-lock.json pada merge yang sama dengan
+SAST. Keduanya disalin ke folder sementara khusus audit. Skrip lifecycle dibuang
+dari manifest audit, ignore-scripts diaktifkan, dan npm audit berjalan dengan
+package-lock-only tanpa npm install/ci. File .npmrc dari PR tidak digunakan;
+registry dikunci ke registry.npmjs.org, konfigurasi pengguna/global kosong, dan
+credential Jenkins tidak diteruskan. Paket devDependencies ikut diperiksa.
+Hanya ringkasan dan detail advisory yang telah dipilih yang menjadi artifacts;
+output mentah proses tidak diteruskan. Folder sementara dibersihkan.
+
+Untuk konfigurasi proyek saat ini, audit PR mendukung npm lockfile versi 2/3 dan
+paket registry npm publik. Dependency lokal/git, workspace, overrides, atau registry
+lain ditolak sebagai konfigurasi belum didukung, bukan dilewatkan lalu dianggap lolos.
+Audit ini belum memeriksa backend MySQL yang sudah tidak aktif, lisensi, malware
+paket, atau keaslian seluruh rantai pasok.
 
 ## Mengapa konfigurasi Jenkins dipin ke commit
 

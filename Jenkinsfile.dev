@@ -18,7 +18,7 @@ pipeline {
             'Periksa PR menuju development',
             'Periksa kode branch ilyas terbaru',
             'Coba alat pendeteksi: contoh masalah OWASP'
-        ], description: 'PR: periksa gabungan kode branch anggota dan development dari PR terbuka dalam repo yang sama. Branch ilyas terbaru: ambil kode terbaru yang sudah di-push ke ilyas saat tahap pengambilan kode; jalankan pemeriksaan, build, dan uji lokal. Perubahan yang belum di-push tidak ikut. Percobaan OWASP: hanya contoh masalah untuk mencoba alat, bukan aplikasi. Tidak deploy produksi.')
+        ], description: 'PR: periksa kode (SAST) dan kerentanan paket pendukung pada gabungan PR dengan development. Branch ilyas terbaru: ambil kode terbaru yang sudah di-push ke ilyas saat tahap pengambilan kode; jalankan pemeriksaan, build, dan uji lokal. Perubahan yang belum di-push tidak ikut. Percobaan OWASP: hanya contoh masalah untuk mencoba alat, bukan aplikasi. Tidak deploy produksi.')
         string(name: 'NOMOR_PR', defaultValue: '', trim: true, description: 'Hanya untuk Periksa PR. Isi nomor PR terbuka yang tujuannya development, dari branch mana pun dalam repo yang sama; kosong = cari otomatis. PR ke main belum didukung.')
         booleanParam(name: 'PERIKSA_ULANG_PR', defaultValue: true, description: 'Hanya untuk Periksa PR manual: periksa lagi meskipun kodenya belum berubah. Jadwal otomatis hanya memeriksa perubahan baru.')
         string(name: 'SUPABASE_URL', defaultValue: params.SUPABASE_URL ?: env.CI_SUPABASE_URL ?: '', trim: true,
@@ -223,7 +223,7 @@ pipeline {
             }
         }
 
-        stage('Dependency Audit') {
+        stage('Audit Dependency Branch') {
             when { expression { env.CI_RUN_MODE == 'full' } }
             steps {
                 bat '''
@@ -240,12 +240,17 @@ pipeline {
             }
         }
 
+        stage('SAST dan Audit Dependency PR') {
+            when { expression { env.CI_RUN_MODE == 'pr' && env.PR_SCAN_REQUIRED == 'true' } }
+            steps { bat 'call npm.cmd run ci:pr:scan' }
+            post { always { archiveArtifacts artifacts: 'reports/sast/*,reports/audit/*', allowEmptyArchive: true, fingerprint: true } }
+        }
+
         stage('SAST') {
-            when { expression { env.CI_RUN_MODE != 'pr' || env.PR_SCAN_REQUIRED == 'true' } }
+            when { expression { env.CI_RUN_MODE != 'pr' } }
             steps {
                 script {
-                    if (env.CI_RUN_MODE == 'pr') { bat 'call npm.cmd run ci:pr:scan' }
-                    else if (env.CI_RUN_MODE == 'demo') {
+                    if (env.CI_RUN_MODE == 'demo') {
                         bat 'node scripts/ci/owasp-demo.mjs'
                         currentBuild.description = 'Percobaan BERHASIL: contoh masalah 10/10 kelompok OWASP terdeteksi dan ditolak; bukan hasil aplikasi'
                     }

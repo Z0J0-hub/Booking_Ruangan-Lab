@@ -2,6 +2,8 @@
 
 Pembaruan PR development + SAST OWASP 2025: [PR_OWASP_2025.md](PR_OWASP_2025.md).
 Mode PR memakai polling metadata GitHub dan memindai source PR sebagai data.
+PR menuju development juga diaudit paket frontend-nya dari lockfile merge yang sama,
+tanpa memasang dependency atau menjalankan skrip PR; temuan tinggi/kritis memblokir.
 Jenkinsfile dan toolchain PR dipin ke commit yang direview; pembaruan pin dilakukan admin.
 Pilihan branch mengambil kode terbaru ilyas secara terpisah pada setiap build.
 Laporan SAST HTML, mapping kategori, dan identitas merge tersedia di Artifacts Jenkins.

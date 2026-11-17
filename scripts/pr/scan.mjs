@@ -4,6 +4,14 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { projectRoot, planFile, repository, github, validatePr, validSourceBranch, scanKey } from './plan.mjs';
 import { runSast } from '../ci/sast.mjs';
+import { runPrAudit } from './audit.mjs';
+
+export function combinePrChecks(checks) {
+  const names = ['sast', 'audit'];
+  if (!names.every(name => ['passed', 'blocked', 'error'].includes(checks[name]?.status) && ({ passed: 0, blocked: 1, error: 2 })[checks[name].status] === checks[name].exitCode)) return { status: 'error', exitCode: 2 };
+  const exitCode = names.some(name => checks[name].exitCode === 2) ? 2 : names.some(name => checks[name].exitCode === 1) ? 1 : 0;
+  return { status: exitCode === 2 ? 'error' : exitCode === 1 ? 'blocked' : 'passed', exitCode };
+}
 
 export function validateSourcePath(name) {
   if (!/^[A-Za-z0-9_./ -]+\.(?:js|jsx|mjs|cjs|ts|tsx)$/.test(name) || name.split('/').some((part) =>
@@ -16,7 +24,7 @@ export function verifyMerge(parents, plan) {
 }
 export async function scanPr() {
   const directory = path.join(projectRoot, 'reports', 'pr'); mkdirSync(directory, { recursive: true });
-  const report = { status: 'error', exitCode: 2, scope: 'PR merge source scanned as data; no npm install, package scripts, imports, or Jenkinsfile from PR are executed.' };
+  const report = { status: 'error', exitCode: 2, checks: {}, scope: 'SAST and frontend dependency audit of PR merge source. Lockfile-only npm audit; no npm install, package scripts, imports, or Jenkinsfile from PR are executed.' };
   const scratch = mkdtempSync(path.join(directory, 'private-source-'));
   try {
     const plan = JSON.parse(readFileSync(planFile, 'utf8'));
@@ -48,8 +56,9 @@ export async function scanPr() {
       const match = /^(\d+) (\w+) ([a-f0-9]{40})\s+(-|\d+)\t(.+)$/.exec(entry);
       if (!match) throw new Error('INVALID_GIT_TREE');
       const [, mode, type, sha, size, name] = match;
-      if (!/^(?:src\/|scripts\/|backend\/|[^/]+\.config\.)/.test(name) || !/\.(?:js|jsx|mjs|cjs|ts|tsx)$/.test(name)) continue;
-      validateSourcePath(name);
+      const dependencyFile = ['package.json', 'package-lock.json'].includes(name);
+      if (!dependencyFile && (!/^(?:src\/|scripts\/|backend\/|[^/]+\.config\.)/.test(name) || !/\.(?:js|jsx|mjs|cjs|ts|tsx)$/.test(name))) continue;
+      if (!dependencyFile) validateSourcePath(name);
       if (!['100644', '100755'].includes(mode) || type !== 'blob' || !/^\d+$/.test(size)) throw new Error('UNSUPPORTED_PR_SOURCE_ENTRY');
       if (Number(size) > 2_000_000 || ++count > 1000 || (bytes += Number(size)) > 20_000_000 || seen.has(name.toLowerCase())) throw new Error('PR_SOURCE_LIMIT_OR_COLLISION');
       seen.add(name.toLowerCase());
@@ -60,13 +69,19 @@ export async function scanPr() {
     }
     if (!count) throw new Error('EMPTY_PR_SOURCE');
     const scan = await runSast({ root: source });
+    const audit = runPrAudit({ source, provenance: { number: plan.number, source: plan.source, target: plan.target,
+      head: plan.head, base: plan.base, merge, scannerRevision: plan.scannerRevision } });
     const latest = validatePr(await github(`/pulls/${plan.number}`));
     if (latest.head !== plan.head || latest.base !== plan.base || latest.source !== plan.source) throw new Error('PR_CHANGED_DURING_SCAN');
     const destination = path.join(projectRoot, 'reports', 'sast'); mkdirSync(destination, { recursive: true });
     for (const name of ['summary.json', 'summary.txt', 'summary.html', 'findings.json', 'coverage.json', 'semgrep.json']) {
       copyFileSync(path.join(source, 'reports', 'sast', name), path.join(destination, name));
     }
-    Object.assign(report, { status: scan.status, exitCode: scan.exitCode, scannedFiles: count, scannedBytes: bytes, findings: scan.findings.length, standard: 'OWASP Top 10:2025' });
+    const auditDestination = path.join(projectRoot, 'reports', 'audit'); mkdirSync(auditDestination, { recursive: true });
+    for (const name of ['summary.json', 'summary.txt', 'summary.html', 'frontend.txt']) copyFileSync(path.join(source, 'reports', 'audit', name), path.join(auditDestination, name));
+    report.checks = { sast: { status: scan.status, exitCode: scan.exitCode, findings: scan.findings.length },
+      audit: { status: audit.status, exitCode: audit.exitCode, vulnerabilities: audit.vulnerabilities } };
+    Object.assign(report, combinePrChecks(report.checks), { scannedFiles: scan.scannedFiles, sourceFiles: count, scannedBytes: bytes, findings: scan.findings.length, standard: 'OWASP Top 10:2025' });
   } catch (error) { report.code = /^[A-Z_]+$/.test(error.message) ? error.message : 'PR_SCAN_ERROR'; }
   finally {
     const relative = path.relative(directory, scratch);
@@ -74,7 +89,7 @@ export async function scanPr() {
     rmSync(scratch, { recursive: true, force: true });
     writeFileSync(path.join(directory, 'summary.json'), JSON.stringify(report, null, 2) + '\n');
   }
-  console.log(`PR SAST: ${report.status}; exit=${report.exitCode}; reports/pr/summary.json and reports/sast/.`);
+  console.log(`PR SAST + Dependency Audit: ${report.status}; exit=${report.exitCode}; reports/pr/summary.json, reports/sast/ and reports/audit/.`);
   return report;
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) process.exitCode = (await scanPr()).exitCode;

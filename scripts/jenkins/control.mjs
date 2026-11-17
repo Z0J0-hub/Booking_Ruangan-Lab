@@ -141,7 +141,7 @@ try {
     const verify = await (await request('/job/reservasi-pipeline/config.xml')).text();
     if (!verify.includes(`<name>${revision}</name>`) || verify.includes('<lightweight>true</lightweight>')) throw new Error('Trusted revision/full checkout not confirmed.');
     writeFileSync(path.join(reportDir, 'pr-activation.json'), JSON.stringify({ job: 'reservasi-pipeline', trustedScannerRevision: revision,
-      target: 'development', sourcePolicy: 'any branch in the same repository', mode: 'data-only PR merge SAST', pollingMinutes: 5 }, null, 2) + '\n');
+      target: 'development', sourcePolicy: 'any branch in the same repository', mode: 'PR merge SAST and lockfile dependency audit', pollingMinutes: 5 }, null, 2) + '\n');
     console.log(`Trusted PR scanner pinned to ${revision}. Run one full/manual build to register the timer and PR parameters.`);
   } else if (command === 'build-pr') {
     if (job !== 'reservasi-pipeline') throw new Error('Use the main pipeline for PR scans.');
@@ -160,7 +160,7 @@ try {
     const choices = ['Periksa PR menuju development', 'Periksa kode branch ilyas terbaru', 'Coba alat pendeteksi: contoh masalah OWASP'];
     const stringParameter = (name, value, description) => `<hudson.model.StringParameterDefinition><name>${name}</name><description>${xmlEscape(description)}</description><defaultValue>${xmlEscape(value)}</defaultValue><trim>true</trim></hudson.model.StringParameterDefinition>`;
     const property = `<hudson.model.ParametersDefinitionProperty><parameterDefinitions>
-<hudson.model.ChoiceParameterDefinition><name>PILIH_PEMERIKSAAN</name><description>${xmlEscape('PR: periksa gabungan kode branch anggota dan development dari PR terbuka dalam repo yang sama. Branch ilyas terbaru: ambil kode terbaru yang sudah di-push ke ilyas saat tahap pengambilan kode; jalankan pemeriksaan, build, dan uji lokal. Perubahan yang belum di-push tidak ikut. Percobaan OWASP: hanya contoh masalah untuk mencoba alat, bukan aplikasi. Tidak deploy produksi.')}</description><choices class="java.util.Arrays$ArrayList"><a class="string-array">${choices.map(c => `<string>${xmlEscape(c)}</string>`).join('')}</a></choices></hudson.model.ChoiceParameterDefinition>
+<hudson.model.ChoiceParameterDefinition><name>PILIH_PEMERIKSAAN</name><description>${xmlEscape('PR: periksa kode (SAST) dan kerentanan paket pendukung pada gabungan PR dengan development. Branch ilyas terbaru: ambil kode terbaru yang sudah di-push ke ilyas saat tahap pengambilan kode; jalankan pemeriksaan, build, dan uji lokal. Perubahan yang belum di-push tidak ikut. Percobaan OWASP: hanya contoh masalah untuk mencoba alat, bukan aplikasi. Tidak deploy produksi.')}</description><choices class="java.util.Arrays$ArrayList"><a class="string-array">${choices.map(c => `<string>${xmlEscape(c)}</string>`).join('')}</a></choices></hudson.model.ChoiceParameterDefinition>
 ${stringParameter('NOMOR_PR', '', 'Hanya untuk Periksa PR. Isi nomor PR terbuka yang tujuannya development, dari branch mana pun dalam repo yang sama; kosong = cari otomatis. PR ke main belum didukung.')}
 <hudson.model.BooleanParameterDefinition><name>PERIKSA_ULANG_PR</name><description>Hanya untuk Periksa PR manual: periksa lagi meskipun kodenya belum berubah. Jadwal otomatis hanya memeriksa perubahan baru.</description><defaultValue>true</defaultValue></hudson.model.BooleanParameterDefinition>
 ${stringParameter('SUPABASE_URL', values.SUPABASE_URL, 'Pengaturan aplikasi tersimpan. Biarkan nilainya; dipakai saat memeriksa kode branch ilyas terbaru.')}
